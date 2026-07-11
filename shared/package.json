@@ -1,0 +1,12 @@
+{
+  "name": "@saas/shared",
+  "version": "1.0.0",
+  "description": "Tipos e interfaces compartidas del sistema",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}

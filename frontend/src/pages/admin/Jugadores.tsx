@@ -1,0 +1,293 @@
+import { useState, useEffect } from 'react';
+import { jugadoresService } from '../../services/jugadores.service';
+import { equiposService } from '../../services/equipos.service';
+import type { Jugador, Equipo } from '@saas/shared';
+import { Plus, Edit, Trash2, X, ArrowLeft, Users, Search } from 'lucide-react';
+import { toast } from 'sonner';
+
+export const JugadoresAdmin = () => {
+  const [equipos, setEquipos] = useState<Equipo[]>([]);
+  const [jugadores, setJugadores] = useState<Jugador[]>([]);
+  const [equipoViendo, setEquipoViendo] = useState<Equipo | null>(null);
+
+  // === NUEVO: ESTADO PARA EL BUSCADOR ===
+  const [busqueda, setBusqueda] = useState('');
+
+  const [mostrarModal, setMostrarModal] = useState(false);
+  const [jugadorSeleccionadoId, setJugadorSeleccionadoId] = useState<string | null>(null);
+  const [nombres, setNombres] = useState('');
+  const [apellidos, setApellidos] = useState('');
+  const [cedula, setCedula] = useState('');
+  const [numeroDorsal, setNumeroDorsal] = useState<number | ''>('');
+
+  useEffect(() => {
+    cargarEquipos();
+  }, []);
+
+  const cargarEquipos = async () => {
+    const datosEquipos = await equiposService.obtenerTodos();
+    setEquipos(datosEquipos);
+  };
+
+  const seleccionarEquipo = async (equipo: Equipo) => {
+    const datosJugadores = await jugadoresService.obtenerPorEquipo(equipo.id);
+    setJugadores(datosJugadores);
+    setEquipoViendo(equipo);
+    setBusqueda(''); // Limpiamos el buscador al cambiar de equipo
+  };
+
+  const abrirModalParaCrear = () => {
+    setJugadorSeleccionadoId(null);
+    setNombres('');
+    setApellidos('');
+    setCedula('');
+    setNumeroDorsal('');
+    setMostrarModal(true);
+  };
+
+  const abrirModalParaEditar = (jugador: Jugador) => {
+    setJugadorSeleccionadoId(jugador.id);
+    setNombres(jugador.nombres);
+    setApellidos(jugador.apellidos);
+    setCedula(jugador.cedula);
+    setNumeroDorsal(jugador.numeroDorsal);
+    setMostrarModal(true);
+  };
+
+  const guardarJugador = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!equipoViendo) return;
+
+    try {
+      const datosBase = {
+        nombres,
+        apellidos,
+        cedula,
+        numeroDorsal: Number(numeroDorsal),
+        equipoId: equipoViendo.id,
+        estadoHabilitacion: 'HABILITADO' as const,
+        fechaNacimiento: Date.now(),
+        fotoUrl: ''
+      };
+
+      if (jugadorSeleccionadoId) {
+        await jugadoresService.actualizar(jugadorSeleccionadoId, datosBase);
+        toast.success('Jugador actualizado con éxito');
+      } else {
+        await jugadoresService.crear(datosBase);
+        toast.success('Jugador registrado con éxito');
+      }
+      
+      setMostrarModal(false);
+      const datosActualizados = await jugadoresService.obtenerPorEquipo(equipoViendo.id);
+      setJugadores(datosActualizados);
+    } catch (error) {
+      toast.error('Ocurrió un error al guardar el jugador');
+      console.error(error);
+    }
+  };
+
+  const borrarJugador = async (id: string, nombreCompleto: string) => {
+    if (!equipoViendo) return;
+
+    if (window.confirm(`¿Estás seguro de eliminar a ${nombreCompleto}?`)) {
+      try {
+        await jugadoresService.eliminar(id);
+        toast.success('Jugador eliminado');
+        const datosActualizados = await jugadoresService.obtenerPorEquipo(equipoViendo.id);
+        setJugadores(datosActualizados);
+      } catch (error) {
+        toast.error('No se pudo eliminar el jugador');
+        console.error(error);
+      }
+    }
+  };
+
+  // === NUEVO: LÓGICA DE FILTRADO Y ORDENAMIENTO ===
+  // Filtramos por nombre, apellido, cédula o dorsal, y luego ordenamos de menor a mayor por dorsal
+  const jugadoresFiltradosYOrdenados = jugadores
+    .filter(jugador => {
+      const termino = busqueda.toLowerCase();
+      return (
+        jugador.nombres.toLowerCase().includes(termino) ||
+        jugador.apellidos.toLowerCase().includes(termino) ||
+        jugador.cedula.includes(termino) ||
+        jugador.numeroDorsal.toString().includes(termino)
+      );
+    })
+    .sort((a, b) => a.numeroDorsal - b.numeroDorsal);
+
+  return (
+    <div className="max-w-6xl relative">
+      
+      {!equipoViendo && (
+        <>
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-slate-800">🏃‍♂️ Plantillas por Club</h1>
+            <p className="text-slate-600 mt-1">Selecciona un equipo para gestionar a sus jugadores.</p>
+          </div>
+
+          {equipos.length === 0 ? (
+            <div className="bg-white p-8 rounded-xl border border-slate-200 text-center text-slate-500 shadow-sm">
+              No hay equipos registrados. Ve al módulo de Equipos primero.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {equipos.map(equipo => (
+                <div 
+                  key={equipo.id} 
+                  onClick={() => seleccionarEquipo(equipo)}
+                  className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-blue-300 transition cursor-pointer group"
+                >
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition">
+                    <Users size={24} />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-800 mb-1">{equipo.nombre}</h3>
+                  <p className="text-sm font-medium text-slate-500 mb-4 bg-slate-100 inline-block px-2 py-1 rounded">
+                    {equipo.categoria}
+                  </p>
+                  <div className="text-blue-600 font-medium text-sm flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                    Gestionar plantilla →
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {equipoViendo && (
+        <>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+            <div>
+              <button 
+                onClick={() => setEquipoViendo(null)}
+                className="text-slate-500 hover:text-blue-600 font-medium flex items-center gap-2 mb-2 transition"
+              >
+                <ArrowLeft size={18} /> Volver a los clubes
+              </button>
+              <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+                {equipoViendo.nombre}
+              </h1>
+              <p className="text-slate-600 mt-1">Categoría: {equipoViendo.categoria} • {jugadores.length} jugadores registrados</p>
+            </div>
+            
+            <button 
+              onClick={abrirModalParaCrear}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition shadow-sm whitespace-nowrap"
+            >
+              <Plus size={20} /> Nuevo Jugador
+            </button>
+          </div>
+
+          {/* === NUEVO: BARRA DE BÚSQUEDA === */}
+          <div className="mb-4 relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="text-slate-400" size={20} />
+            </div>
+            <input
+              type="text"
+              placeholder="Buscar por nombre, apellido, cédula o dorsal..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition text-slate-700"
+            />
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                  <th className="p-4 font-semibold w-24">Dorsal</th>
+                  <th className="p-4 font-semibold">Jugador</th>
+                  <th className="p-4 font-semibold hidden sm:table-cell">Cédula</th>
+                  <th className="p-4 font-semibold text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {jugadoresFiltradosYOrdenados.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-slate-500">
+                      {jugadores.length === 0 
+                        ? 'Este equipo aún no tiene jugadores registrados.' 
+                        : 'No se encontraron jugadores que coincidan con la búsqueda.'}
+                    </td>
+                  </tr>
+                ) : (
+                  jugadoresFiltradosYOrdenados.map((jugador) => (
+                    <tr key={jugador.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                      <td className="p-4">
+                        <span className="bg-slate-800 text-white w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold font-mono">
+                          {jugador.numeroDorsal}
+                        </span>
+                      </td>
+                      <td className="p-4 font-medium text-slate-800">
+                        {jugador.nombres} {jugador.apellidos}
+                      </td>
+                      <td className="p-4 text-slate-600 hidden sm:table-cell">{jugador.cedula}</td>
+                      <td className="p-4 flex justify-end gap-2">
+                        <button onClick={() => abrirModalParaEditar(jugador)} className="p-2 text-slate-400 hover:text-blue-600 transition rounded hover:bg-blue-50" title="Editar">
+                          <Edit size={18} />
+                        </button>
+                        <button onClick={() => borrarJugador(jugador.id, `${jugador.nombres} ${jugador.apellidos}`)} className="p-2 text-slate-400 hover:text-red-600 transition rounded hover:bg-red-50" title="Eliminar">
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* MODAL DE FORMULARIO */}
+      {mostrarModal && equipoViendo && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <h2 className="text-xl font-bold text-slate-800">
+                {jugadorSeleccionadoId ? 'Modificar Jugador' : `Nuevo Jugador para ${equipoViendo.nombre}`}
+              </h2>
+              <button onClick={() => setMostrarModal(false)} className="text-slate-400 hover:text-slate-600 transition bg-slate-100 hover:bg-slate-200 p-2 rounded-full">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={guardarJugador} className="p-6">
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Nombres</label>
+                  <input type="text" required value={nombres} onChange={(e) => setNombres(e.target.value)} className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Apellidos</label>
+                  <input type="text" required value={apellidos} onChange={(e) => setApellidos(e.target.value)} className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Cédula</label>
+                  <input type="text" required value={cedula} onChange={(e) => setCedula(e.target.value)} className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Número Dorsal</label>
+                  <input type="number" required value={numeroDorsal} onChange={(e) => setNumeroDorsal(e.target.value !== '' ? Number(e.target.value) : '')} className="w-full border border-slate-300 rounded-lg px-4 py-2 font-mono font-bold focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                <button type="button" onClick={() => setMostrarModal(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 rounded-lg transition shadow-sm">
+                  {jugadorSeleccionadoId ? 'Guardar Cambios' : 'Registrar Jugador'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
