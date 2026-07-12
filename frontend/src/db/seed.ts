@@ -80,9 +80,9 @@ function validarDorsalesUnicos(jugadores: Jugador[]) {
 
 export async function poblarBaseDeDatosInicial() {
   const usuarios: Usuario[] = [
-    usuarioSeed({ id: 'usr-admin-1', nombre: 'Andrea', apellido: 'Administrador', email: 'admin@liga.local', role: 'ADMIN_LIGA', ligaId, activo: true, cedula: '0100000001' }),
+    usuarioSeed({ id: 'usr-admin-1', nombre: 'Andrea', apellido: 'Administrador', email: 'admin@kimeotech.com', password: 'Kimeotech1', role: 'ADMIN_LIGA', ligaId, activo: true, cedula: '0100000001' }),
     usuarioSeed({ id: 'usr-organizador-1', nombre: 'Oscar', apellido: 'Organizador', email: 'organizador@liga.local', role: 'ORGANIZADOR', ligaId, activo: true, cedula: '0100000002' }),
-    usuarioSeed({ id: 'usr-vocal-1', nombre: 'Valeria', apellido: 'Vocal', email: 'vocal@liga.local', role: 'VOCAL', ligaId, activo: true, cedula: '0100000003' }),
+    usuarioSeed({ id: 'usr-vocal-1', nombre: 'Valeria', apellido: 'Vocal', email: 'vocal@kimeotech.com', password: 'Kimeotech2', role: 'VOCAL', ligaId, activo: true, cedula: '0100000003' }),
     usuarioSeed({ id: 'usr-vocal-2', nombre: 'Vicente', apellido: 'Mesa', email: 'vocal2@liga.local', role: 'VOCAL', ligaId, activo: true, cedula: '0100000004' }),
     usuarioSeed({ id: 'usr-arbitro-1', nombre: 'Arturo', apellido: 'Arbitro', email: 'arbitro@liga.local', role: 'ARBITRO', ligaId, activo: true, cedula: '0100000005' }),
     usuarioSeed({ id: 'usr-arbitro-2', nombre: 'Rene', apellido: 'Central', email: 'arbitro2@liga.local', role: 'ARBITRO', ligaId, activo: true, cedula: '0100000006' }),
@@ -173,7 +173,23 @@ export async function poblarBaseDeDatosInicial() {
       db.jugadores,
     ],
     async () => {
-      for (const usuario of usuarios) if (!(await db.usuarios.get(usuario.id))) await db.usuarios.add(usuario);
+      for (const usuario of usuarios) {
+        const existente = await db.usuarios.get(usuario.id);
+        if (existente) {
+          if (usuario.id === 'usr-admin-1' || usuario.id === 'usr-vocal-1') {
+            await db.usuarios.update(usuario.id, {
+              email: usuario.email,
+              password: usuario.password,
+              activo: true,
+              role: usuario.role,
+              rol: usuario.role,
+              actualizadoEn: ahoraIso(),
+            });
+          }
+        } else {
+          await db.usuarios.add(usuario);
+        }
+      }
       for (const liga of ligas) if (!(await db.ligas.get(liga.id))) await db.ligas.add(liga);
       for (const torneo of torneos) if (!(await db.torneos.get(torneo.id))) await db.torneos.add(torneo);
       for (const campeonato of campeonatos) if (!(await db.campeonatos.get(campeonato.id))) await db.campeonatos.add(campeonato);

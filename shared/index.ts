@@ -22,6 +22,7 @@ export interface Usuario {
   telefono?: string;
   role: UserRole;
   rol?: UserRole;
+  password?: string;
   ligaId?: string;
   activo: boolean;
   creadoEn?: string;

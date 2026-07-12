@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
-import { CalendarDays, ClipboardCheck, Gavel, ShieldCheck, Trophy, Users } from 'lucide-react';
+import { CalendarDays, ClipboardCheck, Gavel, LogIn, ShieldCheck, Trophy, Users } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
+import type { UserRole } from '@saas/shared';
 import { poblarBaseDeDatosInicial } from './db/seed';
 import { AdminLayout } from './layouts/AdminLayout';
 import { TabletLayout } from './layouts/TabletLayout';
@@ -16,6 +17,33 @@ import { PartidoTablet } from './pages/tablet/Partido';
 import { DashboardVocal } from './pages/vocal/Dashboard';
 import { estadisticasService } from './services/estadisticas.service';
 import { sesionService } from './services/sesion.service';
+
+const rolesAdmin: UserRole[] = ['SUPERADMIN', 'ADMIN_LIGA', 'ORGANIZADOR'];
+
+const RutaProtegida = ({ roles, children }: { roles: UserRole[]; children: ReactNode }) => {
+  const [permitido, setPermitido] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let activo = true;
+    void Promise.resolve().then(async () => {
+      const usuario = await sesionService.obtenerUsuarioActivo();
+      if (activo) setPermitido(Boolean(usuario && roles.includes(usuario.role)));
+    });
+    return () => {
+      activo = false;
+    };
+  }, [roles]);
+
+  if (permitido === null) {
+    return (
+      <div className="app-shell flex min-h-screen items-center justify-center">
+        <div className="surface px-6 py-4 font-black text-emerald-700">Validando sesion...</div>
+      </div>
+    );
+  }
+
+  return permitido ? children : <Navigate to="/" replace />;
+};
 
 const DashboardAdmin = () => {
   const [resumen, setResumen] = useState({
@@ -84,13 +112,28 @@ const DashboardAdmin = () => {
 
 const Inicio = () => {
   const navigate = useNavigate();
+  const [email, setEmail] = useState('admin@kimeotech.com');
+  const [password, setPassword] = useState('Kimeotech1');
+  const [tipoAcceso, setTipoAcceso] = useState<'ADMIN' | 'VOCAL'>('ADMIN');
+  const [cargando, setCargando] = useState(false);
 
-  const entrarComoVocal = async () => {
+  const seleccionarAcceso = (tipo: 'ADMIN' | 'VOCAL') => {
+    setTipoAcceso(tipo);
+    setEmail(tipo === 'ADMIN' ? 'admin@kimeotech.com' : 'vocal@kimeotech.com');
+    setPassword(tipo === 'ADMIN' ? 'Kimeotech1' : 'Kimeotech2');
+  };
+
+  const iniciarSesion = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCargando(true);
     try {
-      await sesionService.iniciarComoVocalSeed();
-      navigate('/vocal');
+      const roles = tipoAcceso === 'ADMIN' ? rolesAdmin : (['VOCAL'] satisfies UserRole[]);
+      const usuario = await sesionService.iniciarConCredenciales(email, password, roles);
+      navigate(usuario.role === 'VOCAL' ? '/vocal' : '/admin');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No pudimos abrir el modo vocal.');
+      toast.error(error instanceof Error ? error.message : 'No pudimos iniciar sesion.');
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -113,9 +156,9 @@ const Inicio = () => {
 
         <section className="surface-strong p-5 md:p-6">
           <h2 className="text-2xl font-black text-slate-950">Entrar al sistema</h2>
-          <p className="mt-1 text-sm text-slate-500">Un clic y empiezas. Sin pasos de prueba innecesarios.</p>
-          <div className="mt-5 grid gap-3">
-            <Link to="/admin" className="group rounded-2xl border border-slate-200 bg-slate-50 p-5 transition hover:border-emerald-300 hover:bg-white">
+          <p className="mt-1 text-sm text-slate-500">Ingresa con el correo y contrasena asignados para tu rol.</p>
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <button type="button" onClick={() => seleccionarAcceso('ADMIN')} className={`group rounded-2xl border p-5 text-left transition ${tipoAcceso === 'ADMIN' ? 'border-emerald-400 bg-white shadow-sm' : 'border-slate-200 bg-slate-50 hover:border-emerald-300 hover:bg-white'}`}>
               <div className="flex items-center gap-4">
                 <div className="rounded-2xl bg-emerald-600 p-3 text-white"><Users size={26} /></div>
                 <div>
@@ -123,8 +166,8 @@ const Inicio = () => {
                   <p className="text-sm text-slate-500">Equipos, jugadores y seguimiento de la fecha.</p>
                 </div>
               </div>
-            </Link>
-            <button onClick={entrarComoVocal} className="group rounded-2xl border border-emerald-200 bg-emerald-600 p-5 text-left text-white shadow-lg shadow-emerald-900/15 transition hover:bg-emerald-700">
+            </button>
+            <button type="button" onClick={() => seleccionarAcceso('VOCAL')} className={`group rounded-2xl border p-5 text-left transition ${tipoAcceso === 'VOCAL' ? 'border-emerald-500 bg-emerald-600 text-white shadow-lg shadow-emerald-900/15' : 'border-emerald-200 bg-emerald-600 text-white shadow-lg shadow-emerald-900/15 hover:bg-emerald-700'}`}>
               <div className="flex items-center gap-4">
                 <div className="rounded-2xl bg-white/15 p-3"><ClipboardCheck size={26} /></div>
                 <div>
@@ -134,6 +177,19 @@ const Inicio = () => {
               </div>
             </button>
           </div>
+          <form onSubmit={iniciarSesion} className="mt-5 grid gap-3">
+            <label className="grid gap-1 text-sm font-black text-slate-700">
+              Correo
+              <input className="field" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} />
+            </label>
+            <label className="grid gap-1 text-sm font-black text-slate-700">
+              Contrasena
+              <input className="field" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            </label>
+            <button type="submit" disabled={cargando} className="btn-primary justify-center disabled:opacity-60">
+              <LogIn size={18} /> {cargando ? 'Validando...' : 'Ingresar'}
+            </button>
+          </form>
         </section>
       </main>
     </div>
@@ -162,7 +218,7 @@ function App() {
       <Toaster richColors position="top-right" />
       <Routes>
         <Route path="/" element={<Inicio />} />
-        <Route element={<AdminLayout />}>
+        <Route element={<RutaProtegida roles={rolesAdmin}><AdminLayout /></RutaProtegida>}>
           <Route path="/admin" element={<DashboardAdmin />} />
           <Route path="/admin/campeonato" element={<CampeonatoAdmin />} />
           <Route path="/admin/partidos" element={<PartidosAdmin />} />
@@ -172,7 +228,7 @@ function App() {
           <Route path="/admin/usuarios" element={<UsuariosAdmin />} />
           <Route path="/admin/sanciones" element={<SancionesAdmin />} />
         </Route>
-        <Route element={<TabletLayout />}>
+        <Route element={<RutaProtegida roles={['VOCAL']}><TabletLayout /></RutaProtegida>}>
           <Route path="/vocal" element={<DashboardVocal />} />
           <Route path="/vocal/partidos/:partidoId" element={<PartidoTablet />} />
           <Route path="/tablet" element={<Navigate to="/vocal" replace />} />

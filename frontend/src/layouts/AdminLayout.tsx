@@ -1,8 +1,10 @@
-import { Link, Outlet, useLocation } from 'react-router-dom';
-import { CalendarDays, ChartNoAxesColumn, Gavel, Home, Settings2, Trophy, UserCog, Users } from 'lucide-react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { CalendarDays, ChartNoAxesColumn, Gavel, Home, LogOut, Settings2, Trophy, UserCog, Users } from 'lucide-react';
+import { sesionService } from '../services/sesion.service';
 
 export const AdminLayout = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const menuItems = [
     { name: 'Inicio', path: '/admin', icon: Home },
     { name: 'Campeonato', path: '/admin/campeonato', icon: Settings2 },
@@ -13,6 +15,11 @@ export const AdminLayout = () => {
     { name: 'Usuarios', path: '/admin/usuarios', icon: UserCog },
     { name: 'Sanciones', path: '/admin/sanciones', icon: Gavel },
   ];
+
+  const cerrarSesion = () => {
+    sesionService.cerrarSesion();
+    navigate('/');
+  };
 
   return (
     <div className="app-shell min-h-screen">
@@ -35,7 +42,7 @@ export const AdminLayout = () => {
               );
             })}
           </nav>
-          <Link to="/" className="btn-secondary">Salir</Link>
+          <button onClick={cerrarSesion} className="btn-secondary"><LogOut size={16} /> Salir</button>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">

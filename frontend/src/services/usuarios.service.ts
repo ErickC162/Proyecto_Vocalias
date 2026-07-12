@@ -47,6 +47,10 @@ export const usuariosService = {
     return await db.usuarios.get(id);
   },
 
+  obtenerPorEmail: async (email: string): Promise<Usuario | undefined> => {
+    return await db.usuarios.where('email').equals(email.trim().toLowerCase()).first();
+  },
+
   obtenerActivosPorRol: async (role: UserRole): Promise<Usuario[]> => {
     return await db.usuarios.where('role').equals(role).and((usuario) => usuario.activo).toArray();
   },
