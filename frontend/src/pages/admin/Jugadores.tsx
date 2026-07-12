@@ -20,14 +20,16 @@ export const JugadoresAdmin = () => {
   const [cedula, setCedula] = useState('');
   const [numeroDorsal, setNumeroDorsal] = useState<number | ''>('');
 
-  useEffect(() => {
-    cargarEquipos();
-  }, []);
-
-  const cargarEquipos = async () => {
+  async function cargarEquipos() {
     const datosEquipos = await equiposService.obtenerTodos();
     setEquipos(datosEquipos);
-  };
+  }
+
+  useEffect(() => {
+    // Carga inicial desde IndexedDB para mantener el CRUD local existente.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    cargarEquipos();
+  }, []);
 
   const seleccionarEquipo = async (equipo: Equipo) => {
     const datosJugadores = await jugadoresService.obtenerPorEquipo(equipo.id);
@@ -82,7 +84,7 @@ export const JugadoresAdmin = () => {
       const datosActualizados = await jugadoresService.obtenerPorEquipo(equipoViendo.id);
       setJugadores(datosActualizados);
     } catch (error) {
-      toast.error('Ocurrió un error al guardar el jugador');
+      toast.error(error instanceof Error ? error.message : 'No se pudo guardar el jugador');
       console.error(error);
     }
   };
@@ -117,13 +119,15 @@ export const JugadoresAdmin = () => {
     })
     .sort((a, b) => a.numeroDorsal - b.numeroDorsal);
 
+  const dorsalOcupado = numeroDorsal !== '' && jugadores.some((jugador) => jugador.numeroDorsal === Number(numeroDorsal) && jugador.id !== jugadorSeleccionadoId);
+
   return (
     <div className="max-w-6xl relative">
       
       {!equipoViendo && (
         <>
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-slate-800">🏃‍♂️ Plantillas por Club</h1>
+            <h1 className="text-3xl font-black text-slate-950">Plantillas por club</h1>
             <p className="text-slate-600 mt-1">Selecciona un equipo para gestionar a sus jugadores.</p>
           </div>
 
@@ -137,7 +141,7 @@ export const JugadoresAdmin = () => {
                 <div 
                   key={equipo.id} 
                   onClick={() => seleccionarEquipo(equipo)}
-                  className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md hover:border-blue-300 transition cursor-pointer group"
+                  className="tap-card cursor-pointer group hover:border-emerald-300 hover:shadow-md"
                 >
                   <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition">
                     <Users size={24} />
@@ -174,7 +178,7 @@ export const JugadoresAdmin = () => {
             
             <button 
               onClick={abrirModalParaCrear}
-              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition shadow-sm whitespace-nowrap"
+              className="btn-primary whitespace-nowrap"
             >
               <Plus size={20} /> Nuevo Jugador
             </button>
@@ -190,7 +194,7 @@ export const JugadoresAdmin = () => {
               placeholder="Buscar por nombre, apellido, cédula o dorsal..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm transition text-slate-700"
+              className="field pl-10"
             />
           </div>
 
@@ -274,13 +278,14 @@ export const JugadoresAdmin = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Número Dorsal</label>
-                  <input type="number" required value={numeroDorsal} onChange={(e) => setNumeroDorsal(e.target.value !== '' ? Number(e.target.value) : '')} className="w-full border border-slate-300 rounded-lg px-4 py-2 font-mono font-bold focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" />
+                  <input type="number" required value={numeroDorsal} onChange={(e) => setNumeroDorsal(e.target.value !== '' ? Number(e.target.value) : '')} className={`w-full border rounded-lg px-4 py-2 font-mono font-bold focus:outline-none focus:ring-1 transition ${dorsalOcupado ? 'border-red-400 focus:border-red-500 focus:ring-red-500' : 'border-slate-300 focus:border-emerald-500 focus:ring-emerald-500'}`} />
+                  {dorsalOcupado && <p className="mt-1 text-xs font-bold text-red-600">Ese dorsal ya está ocupado en este equipo.</p>}
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button type="button" onClick={() => setMostrarModal(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 rounded-lg transition shadow-sm">
+                <button type="submit" disabled={dorsalOcupado} className="btn-primary disabled:opacity-50">
                   {jugadorSeleccionadoId ? 'Guardar Cambios' : 'Registrar Jugador'}
                 </button>
               </div>

@@ -1,48 +1,45 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
+import { CalendarDays, ChartNoAxesColumn, Gavel, Home, Settings2, ShieldCheck, Trophy, UserCog, Users } from 'lucide-react';
 
 export const AdminLayout = () => {
   const location = useLocation();
-
   const menuItems = [
-    { name: 'Dashboard', path: '/admin' },
-    { name: 'Equipos', path: '/admin/equipos' },
-    { name: 'Jugadores', path: '/admin/jugadores' },
+    { name: 'Inicio', path: '/admin', icon: Home },
+    { name: 'Campeonato', path: '/admin/campeonato', icon: Settings2 },
+    { name: 'Partidos', path: '/admin/partidos', icon: CalendarDays },
+    { name: 'Estadisticas', path: '/admin/estadisticas', icon: ChartNoAxesColumn },
+    { name: 'Equipos', path: '/admin/equipos', icon: Trophy },
+    { name: 'Jugadores', path: '/admin/jugadores', icon: Users },
+    { name: 'Usuarios', path: '/admin/usuarios', icon: UserCog },
+    { name: 'Sanciones', path: '/admin/sanciones', icon: Gavel },
   ];
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      {/* Menú Lateral (Sidebar) */}
-      <aside className="w-64 bg-white border-r border-slate-200 shadow-sm flex flex-col">
-        <div className="p-6 border-b border-slate-100">
-          <h2 className="text-xl font-bold text-slate-800">Panel Admin</h2>
-        </div>
-        
-        <nav className="flex-1 p-4 space-y-2">
-          {menuItems.map((item) => (
-            <Link
-              key={item.name}
-              to={item.path}
-              className={`block px-4 py-3 rounded-lg transition-colors font-medium ${
-                location.pathname === item.path
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              {item.name}
-            </Link>
-          ))}
-        </nav>
-
-        <div className="p-4 border-t border-slate-100">
-          <Link to="/" className="block w-full text-center px-4 py-2 text-sm text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors">
-            ← Salir al inicio
+    <div className="app-shell min-h-screen">
+      <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <Link to="/admin" className="flex items-center gap-3">
+            <div className="rounded-2xl bg-emerald-600 p-2 text-white"><ShieldCheck size={22} /></div>
+            <div>
+              <p className="font-black text-slate-950">Liga Barrial</p>
+              <p className="text-xs font-bold text-slate-500">Administracion</p>
+            </div>
           </Link>
+          <nav className="flex gap-2 overflow-x-auto">
+            {menuItems.map((item) => {
+              const active = location.pathname === item.path;
+              return (
+                <Link key={item.path} to={item.path} className={`inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-black transition ${active ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-emerald-50'}`}>
+                  <item.icon size={16} /> {item.name}
+                </Link>
+              );
+            })}
+          </nav>
+          <Link to="/" className="btn-secondary">Salir</Link>
         </div>
-      </aside>
-
-      {/* Contenido Principal */}
-      <main className="flex-1 overflow-auto p-8">
-        <Outlet /> {/* Aquí se inyectarán las páginas como Dashboard o Equipos */}
+      </header>
+      <main className="mx-auto max-w-7xl px-4 py-6">
+        <Outlet />
       </main>
     </div>
   );

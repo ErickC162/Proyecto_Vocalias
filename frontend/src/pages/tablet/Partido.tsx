@@ -1,463 +1,528 @@
-import { useState, useEffect } from 'react';
-import { Play, Pause, RotateCcw, SkipForward, X, AlertTriangle, Shield, User, CheckCircle2 } from 'lucide-react';
-import { equiposService } from '../../services/equipos.service';
-import { jugadoresService } from '../../services/jugadores.service';
-import type { Equipo, Jugador } from '@saas/shared';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, CheckCircle2, CircleOff, Clock, FileCheck2, Flag, Pause, Play, Save, Square, X } from 'lucide-react';
 import { toast } from 'sonner';
+import type {
+  AlineacionPartido,
+  Equipo,
+  EstadoPartido,
+  Jugador,
+  ResultadoValidacion,
+  TipoEventoPartido,
+  TipoNovedad,
+  Usuario,
+  VocaliaPartido,
+} from '@saas/shared';
+import { puedePrepararAlineacion, puedeRegistrarEventoDeportivo, periodoDesdeEstado } from '../../domain/partidos/reglasPartido';
+import { sesionService } from '../../services/sesion.service';
+import { calcularMarcadorDesdeEventos, calcularSegundosControl, vocaliaService } from '../../services/vocalia.service';
 
-type TipoEvento = 'GOL' | 'AMARILLA' | 'ROJA' | 'CAMBIO';
+type EquipoClave = 'LOCAL' | 'VISITANTE';
+type SeleccionEquipo = Record<string, { rol: 'TITULAR' | 'SUPLENTE'; esArquero: boolean; esCapitan: boolean; enCancha: boolean }>;
 
-interface EventoPartido {
-  id: string;
-  minuto: number;
-  tipo: TipoEvento;
-  equipo: 'LOCAL' | 'VISITANTE';
-  jugadorId: string;
-  nombreJugador: string;
+const tiposEvento: { value: TipoEventoPartido; label: string }[] = [
+  { value: 'GOL', label: 'Gol' },
+  { value: 'AUTOGOL', label: 'Autogol' },
+  { value: 'TARJETA_AMARILLA', label: 'Amarilla' },
+  { value: 'TARJETA_ROJA', label: 'Roja' },
+  { value: 'DOBLE_AMARILLA', label: 'Doble amarilla' },
+  { value: 'CAMBIO', label: 'Cambio' },
+];
+
+const tiposNovedad: { value: TipoNovedad; label: string }[] = [
+  { value: 'GENERAL', label: 'General' },
+  { value: 'EQUIPO_LOCAL', label: 'Equipo local' },
+  { value: 'EQUIPO_VISITANTE', label: 'Equipo visitante' },
+  { value: 'ARBITRAL', label: 'Arbitral' },
+  { value: 'ESCENARIO', label: 'Escenario' },
+  { value: 'INCIDENTE', label: 'Incidente' },
+  { value: 'SUSPENSION', label: 'Suspension' },
+];
+
+function nombreJugador(jugador?: Jugador) {
+  return jugador ? `${jugador.nombres} ${jugador.apellidos}` : 'Sin jugador';
+}
+
+function construirSeleccion(alineaciones: AlineacionPartido[], equipoId: string): SeleccionEquipo {
+  return alineaciones
+    .filter((alineacion) => alineacion.equipoId === equipoId)
+    .reduce<SeleccionEquipo>((mapa, alineacion) => {
+      mapa[alineacion.jugadorId] = {
+        rol: alineacion.rol,
+        esArquero: alineacion.esArquero,
+        esCapitan: alineacion.esCapitan,
+        enCancha: alineacion.enCancha,
+      };
+      return mapa;
+    }, {});
+}
+
+function formatoTiempo(segundos: number) {
+  const min = Math.floor(segundos / 60).toString().padStart(2, '0');
+  const seg = (segundos % 60).toString().padStart(2, '0');
+  return `${min}:${seg}`;
+}
+
+function periodoNumero(estado: EstadoPartido): 1 | 2 {
+  return estado === 'SEGUNDO_TIEMPO' ? 2 : 1;
+}
+
+function iconoEvento(tipo: TipoEventoPartido) {
+  if (tipo === 'GOL') return '⚽';
+  if (tipo === 'AUTOGOL') return '↩';
+  if (tipo === 'TARJETA_AMARILLA') return '🟨';
+  if (tipo === 'TARJETA_ROJA' || tipo === 'DOBLE_AMARILLA') return '🟥';
+  if (tipo === 'CAMBIO') return '↔';
+  if (tipo.includes('TIEMPO')) return '⏱';
+  if (tipo === 'SUSPENSION') return '!';
+  return '•';
 }
 
 export const PartidoTablet = () => {
-  // === ESTADOS DE CONFIGURACIÓN PREVIA ===
-  const [partidoConfigurado, setPartidoConfigurado] = useState(false);
-  const [titularesLocal, setTitularesLocal] = useState<string[]>([]);
-  const [titularesVisitante, setTitularesVisitante] = useState<string[]>([]);
-  const [arqueroLocal, setArqueroLocal] = useState<string | null>(null);
-  const [arqueroVisitante, setArqueroVisitante] = useState<string | null>(null);
-  const [capitanLocal, setCapitanLocal] = useState<string | null>(null);
-  const [capitanVisitante, setCapitanVisitante] = useState<string | null>(null);
+  const { partidoId } = useParams();
+  const [usuario, setUsuario] = useState<Usuario | null>(null);
+  const [datos, setDatos] = useState<VocaliaPartido | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [tick, setTick] = useState(0);
 
-  // === ESTADOS DEL PARTIDO ===
-  const [segundos, setSegundos] = useState(0);
-  const [cronometroActivo, setCronometroActivo] = useState(false);
-  const [periodo, setPeriodo] = useState<1 | 2>(1);
-  const [golesLocal, setGolesLocal] = useState(0);
-  const [golesVisitante, setGolesVisitante] = useState(0);
-  const [eventos, setEventos] = useState<EventoPartido[]>([]);
-  const [tabActiva, setTabActiva] = useState<'RESUMEN' | 'ALINEACIONES'>('RESUMEN');
+  const [seleccionLocal, setSeleccionLocal] = useState<SeleccionEquipo>({});
+  const [seleccionVisitante, setSeleccionVisitante] = useState<SeleccionEquipo>({});
+  const [modalInicio, setModalInicio] = useState(false);
+  const [validacionPreparacion, setValidacionPreparacion] = useState<ResultadoValidacion | null>(null);
+  const [validacionActa, setValidacionActa] = useState<ResultadoValidacion | null>(null);
 
-  // === ESTADOS DE DATOS ===
-  const [equipoLocal, setEquipoLocal] = useState<Equipo | null>(null);
-  const [equipoVisitante, setEquipoVisitante] = useState<Equipo | null>(null);
-  const [jugadoresLocal, setJugadoresLocal] = useState<Jugador[]>([]);
-  const [jugadoresVisitante, setJugadoresVisitante] = useState<Jugador[]>([]);
+  const [modalEvento, setModalEvento] = useState(false);
+  const [tipoEvento, setTipoEvento] = useState<TipoEventoPartido>('GOL');
+  const [equipoEvento, setEquipoEvento] = useState<EquipoClave>('LOCAL');
+  const [jugadorEventoId, setJugadorEventoId] = useState('');
+  const [jugadorSaleId, setJugadorSaleId] = useState('');
+  const [jugadorEntraId, setJugadorEntraId] = useState('');
+  const [minuto, setMinuto] = useState('0');
+  const [descripcion, setDescripcion] = useState('');
 
-  // === ESTADOS PARA EL MODAL DE EVENTOS ===
-  const [modalAbierto, setModalAbierto] = useState(false);
-  const [equipoSeleccionado, setEquipoSeleccionado] = useState<'LOCAL' | 'VISITANTE' | null>(null);
-  const [tipoEventoSeleccionado, setTipoEventoSeleccionado] = useState<TipoEvento | null>(null);
+  const [tipoNovedad, setTipoNovedad] = useState<TipoNovedad>('GENERAL');
+  const [descripcionNovedad, setDescripcionNovedad] = useState('');
+  const [motivoSuspension, setMotivoSuspension] = useState('');
+  const [confirmarCierre, setConfirmarCierre] = useState(false);
 
-  useEffect(() => {
-    const cargarDatos = async () => {
-      const equipos = await equiposService.obtenerTodos();
-      if (equipos.length >= 2) {
-        setEquipoLocal(equipos[0]);
-        setEquipoVisitante(equipos[1]);
-        const jLocal = await jugadoresService.obtenerPorEquipo(equipos[0].id);
-        const jVisitante = await jugadoresService.obtenerPorEquipo(equipos[1].id);
-        
-        // Ordenamos por dorsal para que sea fácil encontrarlos en el vestuario
-        setJugadoresLocal(jLocal.sort((a, b) => a.numeroDorsal - b.numeroDorsal));
-        setJugadoresVisitante(jVisitante.sort((a, b) => a.numeroDorsal - b.numeroDorsal));
-      }
-    };
-    cargarDatos();
-  }, []);
-
-  useEffect(() => {
-    let intervalo: ReturnType<typeof setInterval>;
-    if (cronometroActivo) {
-      intervalo = setInterval(() => setSegundos((s) => s + 1), 1000);
-    }
-    return () => clearInterval(intervalo);
-  }, [cronometroActivo]);
-
-  const formatoTiempo = (totalSegundos: number) => {
-    const minutos = Math.floor(totalSegundos / 60).toString().padStart(2, '0');
-    const segs = (totalSegundos % 60).toString().padStart(2, '0');
-    return `${minutos}:${segs}`;
-  };
-
-  const manejarCambioPeriodo = () => {
-    if (periodo === 1 && window.confirm('¿Iniciar el Segundo Tiempo (Min 45)?')) {
-      setPeriodo(2);
-      setSegundos(45 * 60);
-      setCronometroActivo(false);
-    }
-  };
-
-  const reiniciarPartido = () => {
-    if (window.confirm('¿Reiniciar el partido? Se borrará el marcador y TODO el historial.')) {
-      setPeriodo(1);
-      setSegundos(0);
-      setGolesLocal(0);
-      setGolesVisitante(0);
-      setEventos([]);
-      setCronometroActivo(false);
-      setPartidoConfigurado(false); // Volvemos al vestuario
-    }
-  };
-
-  // === LÓGICA DE CONFIGURACIÓN DEL VESTUARIO ===
-  const manejarTitular = (equipo: 'LOCAL' | 'VISITANTE', id: string) => {
-    const setTitulares = equipo === 'LOCAL' ? setTitularesLocal : setTitularesVisitante;
-    const titulares = equipo === 'LOCAL' ? titularesLocal : titularesVisitante;
-
-    if (titulares.includes(id)) {
-      setTitulares(titulares.filter(t => t !== id));
-      // Si desmarcamos al titular, le quitamos la capitanía/arco si la tenía
-      if (equipo === 'LOCAL' && arqueroLocal === id) setArqueroLocal(null);
-      if (equipo === 'LOCAL' && capitanLocal === id) setCapitanLocal(null);
-      if (equipo === 'VISITANTE' && arqueroVisitante === id) setArqueroVisitante(null);
-      if (equipo === 'VISITANTE' && capitanVisitante === id) setCapitanVisitante(null);
-    } else {
-      if (titulares.length >= 11) {
-        toast.error('No puedes seleccionar más de 11 titulares.');
-        return;
-      }
-      setTitulares([...titulares, id]);
-    }
-  };
-
-  const manejarRol = (equipo: 'LOCAL' | 'VISITANTE', id: string, rol: 'ARQ' | 'CAP') => {
-    const titulares = equipo === 'LOCAL' ? titularesLocal : titularesVisitante;
-    
-    // Un jugador debe ser titular para tener un rol
-    if (!titulares.includes(id)) {
-      toast.warning('El jugador debe estar marcado como titular primero.');
+  const cargar = async () => {
+    if (!partidoId) {
+      setError('No se recibio el partido solicitado.');
+      setCargando(false);
       return;
     }
-
-    if (equipo === 'LOCAL') {
-      if (rol === 'ARQ') setArqueroLocal(arqueroLocal === id ? null : id);
-      if (rol === 'CAP') setCapitanLocal(capitanLocal === id ? null : id);
-    } else {
-      if (rol === 'ARQ') setArqueroVisitante(arqueroVisitante === id ? null : id);
-      if (rol === 'CAP') setCapitanVisitante(capitanVisitante === id ? null : id);
-    }
-  };
-
-  // Validaciones para habilitar el botón de inicio
-  const esEquipoValido = (titulares: string[], arquero: string | null, capitan: string | null) => {
-    return titulares.length >= 7 && titulares.length <= 11 && arquero !== null && capitan !== null;
-  };
-
-  const puedeIniciarPartido = esEquipoValido(titularesLocal, arqueroLocal, capitanLocal) && 
-                              esEquipoValido(titularesVisitante, arqueroVisitante, capitanVisitante);
-
-  // === LÓGICA DE EVENTOS (Ya implementada previamente) ===
-  const iniciarRegistroEvento = (equipo: 'LOCAL' | 'VISITANTE', tipo: TipoEvento) => {
-    if (!cronometroActivo && !window.confirm('El cronómetro está detenido. ¿Registrar evento?')) return;
-    setEquipoSeleccionado(equipo);
-    setTipoEventoSeleccionado(tipo);
-    setModalAbierto(true);
-  };
-
-  const registrarEventoDefinitivo = (jugador: Jugador) => {
-    const minuto = Math.floor(segundos / 60);
-    const nuevoEvento: EventoPartido = {
-      id: crypto.randomUUID(), minuto, tipo: tipoEventoSeleccionado!, equipo: equipoSeleccionado!,
-      jugadorId: jugador.id, nombreJugador: `${jugador.nombres} ${jugador.apellidos}`
-    };
-
-    let eventosAGuardar = [nuevoEvento];
-
-    if (tipoEventoSeleccionado === 'GOL') {
-      if (equipoSeleccionado === 'LOCAL') setGolesLocal((prev) => prev + 1);
-      else setGolesVisitante((prev) => prev + 1);
-      toast.success(`¡GOL de ${jugador.nombres}! (Min ${minuto})`);
-    } else if (tipoEventoSeleccionado === 'AMARILLA') {
-      const amarillasPrevias = eventos.filter(e => e.jugadorId === jugador.id && e.tipo === 'AMARILLA').length;
-      if (amarillasPrevias === 1) {
-        toast.error(`¡Segunda amarilla para ${jugador.nombres}! Expulsado (Min ${minuto})`);
-        const eventoRoja: EventoPartido = { ...nuevoEvento, id: crypto.randomUUID(), tipo: 'ROJA' };
-        eventosAGuardar = [eventoRoja, nuevoEvento];
+    try {
+      setCargando(true);
+      const activo = await sesionService.obtenerUsuarioActivo();
+      setUsuario(activo);
+      if (!activo || activo.role !== 'VOCAL') throw new Error('Debes entrar como vocal para abrir esta pagina.');
+      const vocalia = await vocaliaService.cargarPartidoParaVocal(partidoId, activo);
+      setDatos(vocalia);
+      setSeleccionLocal(construirSeleccion(vocalia.alineaciones, vocalia.equipoLocal.id));
+      setSeleccionVisitante(construirSeleccion(vocalia.alineaciones, vocalia.equipoVisitante.id));
+      if (vocalia.partido.estado === 'PENDIENTE_ACTA') {
+        setValidacionActa(await vocaliaService.validarRevisionActa(partidoId, activo));
       } else {
-        toast.warning(`Tarjeta Amarilla: ${jugador.nombres} (Min ${minuto})`);
+        setValidacionActa(null);
       }
-    } else if (tipoEventoSeleccionado === 'ROJA') {
-      toast.error(`Tarjeta Roja Directa: ${jugador.nombres} (Min ${minuto})`);
-    } else if (tipoEventoSeleccionado === 'CAMBIO') {
-      toast.info(`Cambio registrado: Sale/Entra ${jugador.nombres} (Min ${minuto})`);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cargar la vocalia.');
+    } finally {
+      setCargando(false);
     }
-
-    setEventos(prev => [...eventosAGuardar, ...prev]);
-    setModalAbierto(false);
   };
 
-  const jugadoresExpulsadosIds = eventos.filter(e => e.tipo === 'ROJA').map(e => e.jugadorId);
+  useEffect(() => {
+    // Carga inicial desde sesion local e IndexedDB.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    cargar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partidoId]);
 
-  // =========================================================================
-  // VISTA 1: CONFIGURACIÓN PREVIA AL PARTIDO (VESTUARIOS)
-  // =========================================================================
-  if (!partidoConfigurado) {
-    const renderListaVestuario = (equipo: 'LOCAL' | 'VISITANTE', jugadores: Jugador[], titulares: string[], arquero: string | null, capitan: string | null) => (
-      <div className="flex-1 bg-slate-900 rounded-xl border border-slate-800 p-4 flex flex-col h-[calc(100vh-180px)]">
-        <div className="mb-4 pb-3 border-b border-slate-800">
-          <h3 className="text-xl font-bold text-slate-200">
-            {equipo === 'LOCAL' ? equipoLocal?.nombre : equipoVisitante?.nombre}
-          </h3>
-          <div className="flex gap-4 mt-2 text-sm font-medium">
-            <span className={`${titulares.length >= 7 ? 'text-emerald-400' : 'text-amber-500'}`}>Titulares: {titulares.length}/11</span>
-            <span className={`${arquero ? 'text-emerald-400' : 'text-amber-500'}`}>Arquero: {arquero ? '1' : '0'}</span>
-            <span className={`${capitan ? 'text-emerald-400' : 'text-amber-500'}`}>Capitán: {capitan ? '1' : '0'}</span>
-          </div>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-          {jugadores.map(jugador => {
-            const esTitular = titulares.includes(jugador.id);
-            const esARQ = arquero === jugador.id;
-            const esCAP = capitan === jugador.id;
-            
-            return (
-              <div key={jugador.id} className={`flex items-center justify-between p-3 rounded-lg border transition-all ${esTitular ? 'bg-slate-800 border-blue-500/50' : 'bg-slate-950 border-slate-800'}`}>
-                <div 
-                  className="flex items-center gap-3 cursor-pointer flex-1"
-                  onClick={() => manejarTitular(equipo, jugador.id)}
-                >
-                  <div className={`w-6 h-6 rounded-md flex items-center justify-center border ${esTitular ? 'bg-blue-600 border-blue-500' : 'border-slate-600'}`}>
-                    {esTitular && <CheckCircle2 size={16} className="text-white" />}
-                  </div>
-                  <span className="w-8 text-center font-mono font-bold text-slate-400">{jugador.numeroDorsal}</span>
-                  <span className={`font-medium ${esTitular ? 'text-slate-100' : 'text-slate-500'}`}>
-                    {jugador.nombres} {jugador.apellidos}
-                  </span>
-                </div>
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((valor) => valor + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
-                <div className="flex gap-2 ml-4">
-                  <button 
-                    onClick={() => manejarRol(equipo, jugador.id, 'ARQ')}
-                    className={`px-3 py-1 text-xs font-bold rounded transition ${esARQ ? 'bg-amber-600 text-white' : esTitular ? 'bg-slate-700 text-slate-400 hover:bg-slate-600' : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'}`}
-                    disabled={!esTitular}
-                    title="Asignar Arquero"
-                  >
-                    ARQ
-                  </button>
-                  <button 
-                    onClick={() => manejarRol(equipo, jugador.id, 'CAP')}
-                    className={`px-3 py-1 text-xs font-bold rounded transition ${esCAP ? 'bg-emerald-600 text-white' : esTitular ? 'bg-slate-700 text-slate-400 hover:bg-slate-600' : 'bg-slate-800/50 text-slate-600 cursor-not-allowed'}`}
-                    disabled={!esTitular}
-                    title="Asignar Capitán"
-                  >
-                    CAP
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
+  const marcador = useMemo(() => (datos ? calcularMarcadorDesdeEventos(datos.partido, datos.eventos) : { local: 0, visitante: 0 }), [datos]);
+  const jugadoresPorId = useMemo(() => {
+    const mapa = new Map<string, Jugador>();
+    datos?.jugadoresLocal.concat(datos.jugadoresVisitante).forEach((jugador) => mapa.set(jugador.id, jugador));
+    return mapa;
+  }, [datos]);
 
+  if (cargando) return <div className="p-8 text-slate-300">Cargando vocalia...</div>;
+
+  if (error || !datos || !usuario) {
     return (
-      <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 p-6 font-sans select-none">
-        <div className="mb-6 flex justify-between items-end">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-3">
-              <Shield className="text-blue-500" size={32} />
-              Preparación de Partido
-            </h1>
-            <p className="text-slate-400 mt-2">Selecciona los titulares, capitanes y arqueros antes de iniciar el cronómetro.</p>
-          </div>
-          <button 
-            onClick={() => setPartidoConfigurado(true)}
-            disabled={!puedeIniciarPartido}
-            className={`px-8 py-3 rounded-xl font-bold text-lg transition shadow-lg flex items-center gap-2 ${puedeIniciarPartido ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}
-          >
-            Ir a la Cancha <Play size={20} className={puedeIniciarPartido ? "fill-white" : ""} />
-          </button>
-        </div>
-
-        <div className="flex gap-6">
-          {renderListaVestuario('LOCAL', jugadoresLocal, titularesLocal, arqueroLocal, capitanLocal)}
-          {renderListaVestuario('VISITANTE', jugadoresVisitante, titularesVisitante, arqueroVisitante, capitanVisitante)}
+      <div className="min-h-[70vh] flex items-center justify-center p-6">
+        <div className="max-w-md text-center bg-slate-900 border border-slate-800 rounded-2xl p-8">
+          <CircleOff className="mx-auto text-red-400 mb-4" size={48} />
+          <h1 className="text-2xl font-bold text-white">Acceso no disponible</h1>
+          <p className="text-slate-400 mt-2">{error ?? 'No se pudo abrir este partido.'}</p>
+          <Link to="/vocal" className="mt-6 inline-flex rounded-lg bg-green-600 px-4 py-3 font-bold text-white hover:bg-green-700">
+            Volver a mis partidos
+          </Link>
         </div>
       </div>
     );
   }
 
-  // =========================================================================
-  // VISTA 2: EL PARTIDO (CANCHA, CRONÓMETRO Y EVENTOS)
-  // =========================================================================
+  const soloLectura = datos.partido.estado === 'ACTA_CERRADA' || datos.partido.estado === 'CANCELADO';
+  const periodoActual = periodoDesdeEstado(datos.partido.estado);
+  const controlActual = periodoActual ? datos.controlesTiempo.find((control) => control.periodo === periodoActual) : undefined;
+  const segundosVisibles = calcularSegundosControl(controlActual) + tick * 0;
+
+  const obtenerEquipo = (clave: EquipoClave): Equipo => (clave === 'LOCAL' ? datos.equipoLocal : datos.equipoVisitante);
+  const obtenerJugadores = (clave: EquipoClave): Jugador[] => (clave === 'LOCAL' ? datos.jugadoresLocal : datos.jugadoresVisitante);
+  const obtenerSeleccion = (clave: EquipoClave): SeleccionEquipo => (clave === 'LOCAL' ? seleccionLocal : seleccionVisitante);
+  const setSeleccion = (clave: EquipoClave, seleccion: SeleccionEquipo) => (clave === 'LOCAL' ? setSeleccionLocal(seleccion) : setSeleccionVisitante(seleccion));
+
+  const ejecutar = async (accion: () => Promise<void>, mensaje: string) => {
+    try {
+      await accion();
+      toast.success(mensaje);
+      await cargar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo completar la accion.');
+    }
+  };
+
+  const abrirConfirmacionInicio = async () => {
+    const validacion = await vocaliaService.validarPreparacionPartido(datos.partido.id);
+    setValidacionPreparacion(validacion);
+    setModalInicio(true);
+  };
+
+  const cambiarRol = (clave: EquipoClave, jugador: Jugador, rol: 'TITULAR' | 'SUPLENTE') => {
+    if (soloLectura || !puedePrepararAlineacion(datos.partido.estado)) return;
+    if (jugador.estadoHabilitacion !== 'HABILITADO' || jugador.habilitado === false || jugador.activo === false) {
+      toast.error(jugador.motivoInhabilitacion ?? 'No puedes incluir un jugador no habilitado.');
+      return;
+    }
+    const actual = obtenerSeleccion(clave);
+    const previo = actual[jugador.id];
+    const siguiente = { ...actual };
+    if (previo?.rol === rol) delete siguiente[jugador.id];
+    else siguiente[jugador.id] = { rol, esArquero: previo?.esArquero ?? false, esCapitan: previo?.esCapitan ?? false, enCancha: rol === 'TITULAR' };
+    setSeleccion(clave, siguiente);
+  };
+
+  const marcarRolEspecial = (clave: EquipoClave, jugadorId: string, campo: 'esArquero' | 'esCapitan') => {
+    if (soloLectura || !puedePrepararAlineacion(datos.partido.estado)) return;
+    const actual = obtenerSeleccion(clave);
+    if (!actual[jugadorId]) {
+      toast.warning('Primero marca al jugador como titular o suplente.');
+      return;
+    }
+    const siguiente = Object.fromEntries(Object.entries(actual).map(([id, valor]) => [id, { ...valor, [campo]: id === jugadorId ? !valor[campo] : false }])) as SeleccionEquipo;
+    setSeleccion(clave, siguiente);
+  };
+
+  const guardarAlineacion = async (clave: EquipoClave) => {
+    const equipo = obtenerEquipo(clave);
+    const registros = Object.entries(obtenerSeleccion(clave)).map(([jugadorId, valor], index) => ({ jugadorId, ...valor, orden: index }));
+    await ejecutar(() => vocaliaService.guardarAlineacionEquipo(datos.partido.id, equipo.id, registros), `Alineacion de ${equipo.nombre} guardada.`);
+  };
+
+  const abrirEvento = (clave: EquipoClave, tipo: TipoEventoPartido) => {
+    const jugadores = obtenerJugadores(clave);
+    setEquipoEvento(clave);
+    setTipoEvento(tipo);
+    setJugadorEventoId(jugadores[0]?.id ?? '');
+    setJugadorSaleId('');
+    setJugadorEntraId('');
+    setMinuto(String(Math.floor(segundosVisibles / 60)));
+    setDescripcion('');
+    setModalEvento(true);
+  };
+
+  const registrarEvento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const equipo = obtenerEquipo(equipoEvento);
+    await ejecutar(
+      async () => {
+        await vocaliaService.crearEvento({
+          partidoId: datos.partido.id,
+          tipoEvento,
+          equipoId: tipoEvento === 'CAMBIO' ? undefined : equipo.id,
+          jugadorId: tipoEvento === 'CAMBIO' ? undefined : jugadorEventoId,
+          jugadorSaleId: tipoEvento === 'CAMBIO' ? jugadorSaleId : undefined,
+          jugadorEntraId: tipoEvento === 'CAMBIO' ? jugadorEntraId : undefined,
+          minuto: Number(minuto),
+          periodo: periodoNumero(datos.partido.estado),
+          descripcion,
+          registradoPorUsuarioId: usuario.id,
+        });
+        setModalEvento(false);
+      },
+      'Evento registrado.',
+    );
+  };
+
+  const guardarNovedad = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await ejecutar(
+      async () => {
+        await vocaliaService.crearNovedad({
+          partidoId: datos.partido.id,
+          tipo: tipoNovedad,
+          descripcion: descripcionNovedad,
+          minuto: periodoActual ? Math.floor(segundosVisibles / 60) : undefined,
+          periodo: periodoActual,
+          creadaPor: usuario.id,
+        });
+        setDescripcionNovedad('');
+      },
+      'Novedad registrada.',
+    );
+  };
+
+  const renderAlineacion = (clave: EquipoClave) => {
+    const equipo = obtenerEquipo(clave);
+    const jugadores = [...obtenerJugadores(clave)].sort((a, b) => a.numeroDorsal - b.numeroDorsal);
+    const seleccion = obtenerSeleccion(clave);
+    const titulares = jugadores.filter((jugador) => seleccion[jugador.id]?.rol === 'TITULAR');
+    const suplentes = jugadores.filter((jugador) => seleccion[jugador.id]?.rol === 'SUPLENTE');
+    const inhabilitados = jugadores.filter((jugador) => jugador.estadoHabilitacion !== 'HABILITADO' || jugador.habilitado === false || jugador.activo === false);
+    const disponibles = jugadores.filter((jugador) => !seleccion[jugador.id] && !inhabilitados.some((item) => item.id === jugador.id));
+
+    const renderJugador = (jugador: Jugador) => {
+      const estado = seleccion[jugador.id];
+      const persistido = datos.alineaciones.find((item) => item.jugadorId === jugador.id);
+      const inhabilitado = jugador.estadoHabilitacion !== 'HABILITADO' || jugador.habilitado === false || jugador.activo === false;
+      return (
+        <div key={jugador.id} className={`rounded-2xl border p-3 shadow-sm ${inhabilitado ? 'border-red-100 bg-red-50' : 'border-slate-200 bg-white'}`}>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 font-black text-white">{jugador.numeroDorsal}</span>
+              <div className="min-w-0">
+                <p className="truncate font-black text-slate-950">{nombreJugador(jugador)}</p>
+                <p className="text-xs font-bold text-slate-500">{jugador.posicion ?? 'Sin posicion'} · {jugador.estadoHabilitacion}</p>
+                {inhabilitado && <p className="mt-1 text-xs font-bold text-red-700">{jugador.motivoInhabilitacion ?? 'No disponible para este partido'}</p>}
+                <span className="badge mt-1 bg-slate-100 text-slate-600">{persistido?.estadoActual ?? 'SIN_ALINEAR'}</span>
+              </div>
+            </div>
+            {!soloLectura && puedePrepararAlineacion(datos.partido.estado) && !inhabilitado && (
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => cambiarRol(clave, jugador, 'TITULAR')} className={`rounded-full px-3 py-2 text-xs font-black ${estado?.rol === 'TITULAR' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>Titular</button>
+                <button onClick={() => cambiarRol(clave, jugador, 'SUPLENTE')} className={`rounded-full px-3 py-2 text-xs font-black ${estado?.rol === 'SUPLENTE' ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-600'}`}>Suplente</button>
+                <button onClick={() => marcarRolEspecial(clave, jugador.id, 'esArquero')} className={`rounded-full px-3 py-2 text-xs font-black ${estado?.esArquero ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'}`}>ARQ</button>
+                <button onClick={() => marcarRolEspecial(clave, jugador.id, 'esCapitan')} className={`rounded-full px-3 py-2 text-xs font-black ${estado?.esCapitan ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>CAP</button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <section className="surface-strong p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div>
+            <h2 className="text-xl font-black text-slate-950">{equipo.nombre}</h2>
+            <p className="text-sm text-slate-500">{equipo.categoria}</p>
+          </div>
+          {!soloLectura && puedePrepararAlineacion(datos.partido.estado) && (
+            <button onClick={() => guardarAlineacion(clave)} className="btn-primary">
+              <Save size={18} /> Guardar alineacion
+            </button>
+          )}
+        </div>
+        <div className="grid gap-4">
+          <div><h3 className="mb-2 flex items-center gap-2 font-black text-emerald-700"><Flag size={16} /> Titulares ({titulares.length})</h3><div className="space-y-2">{titulares.length ? titulares.map(renderJugador) : <p className="text-sm text-slate-500">Sin titulares.</p>}</div></div>
+          <div><h3 className="mb-2 flex items-center gap-2 font-black text-sky-700"><Square size={15} /> Suplentes ({suplentes.length})</h3><div className="space-y-2">{suplentes.length ? suplentes.map(renderJugador) : <p className="text-sm text-slate-500">Sin suplentes.</p>}</div></div>
+          {!soloLectura && puedePrepararAlineacion(datos.partido.estado) && <div><h3 className="font-bold text-slate-400 mb-2">Disponibles</h3><div className="space-y-2">{disponibles.map(renderJugador)}</div></div>}
+          {inhabilitados.length > 0 && <details className="rounded-2xl border border-red-100 bg-red-50 p-3"><summary className="cursor-pointer font-black text-red-700">No disponibles ({inhabilitados.length})</summary><div className="mt-3 space-y-2">{inhabilitados.map(renderJugador)}</div></details>}
+        </div>
+      </section>
+    );
+  };
+
+  const alineacionesEquipo = datos.alineaciones.filter((alineacion) => alineacion.equipoId === obtenerEquipo(equipoEvento).id);
+  const jugadoresEvento = obtenerJugadores(equipoEvento).filter((jugador) => jugador.estadoHabilitacion === 'HABILITADO' && jugador.habilitado !== false && jugador.activo !== false && datos.alineaciones.find((a) => a.jugadorId === jugador.id)?.estadoActual !== 'EXPULSADO');
+  const jugadoresEnCancha = alineacionesEquipo.filter((a) => a.estadoActual === 'EN_CANCHA').map((a) => jugadoresPorId.get(a.jugadorId)).filter((j): j is Jugador => Boolean(j));
+  const suplentesDisponibles = alineacionesEquipo.filter((a) => a.estadoActual === 'SUPLENTE_DISPONIBLE').map((a) => jugadoresPorId.get(a.jugadorId)).filter((j): j is Jugador => Boolean(j));
+  const eventosDeportivosHabilitados = tiposEvento.filter((tipo) => puedeRegistrarEventoDeportivo(datos.partido.estado, tipo.value));
+  const revisionRapida = datos.partido.estado === 'PENDIENTE_ACTA';
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 p-4 font-sans select-none overflow-x-hidden">
-      
-      {/* MARCADOR Y CRONÓMETRO */}
-      <div className="bg-slate-900 rounded-2xl p-4 md:pt-8 mb-4 shadow-xl border border-slate-800 flex flex-col md:flex-row justify-between items-center relative flex-shrink-0 gap-6 md:gap-0">
-        <div className="hidden md:block absolute top-2 left-1/2 -translate-x-1/2 bg-slate-950 px-6 py-1.5 rounded-full border border-slate-700 text-xs font-bold tracking-widest text-slate-400 z-10 shadow-sm">
-          {periodo === 1 ? '1ER TIEMPO' : '2DO TIEMPO'}
-        </div>
-        
-        {/* Equipo Local */}
-        <div className="w-full md:w-1/3 text-center px-2">
-          <h2 className="text-xl md:text-2xl font-bold text-slate-300 truncate">
-            {equipoLocal ? equipoLocal.nombre : 'Local'}
-          </h2>
-          <span className="text-5xl md:text-6xl font-black mt-1 block tracking-tighter text-red-500">{golesLocal}</span>
-        </div>
+    <div className="min-h-screen px-3 py-4 md:px-6">
+      <div className="mx-auto max-w-7xl space-y-5">
+        <Link to="/vocal" className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-black text-slate-600 shadow-sm">
+          <ArrowLeft size={16} /> Mis partidos
+        </Link>
 
-        {/* Reloj */}
-        <div className="w-full md:w-1/3 flex flex-col items-center md:border-x border-slate-800 px-2 md:px-6 z-10">
-          <div className="text-4xl md:text-5xl font-bold text-slate-300 mb-4 tracking-wider">
-            {formatoTiempo(segundos)}
+        <header className="sticky top-[65px] z-30 overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-xl shadow-emerald-900/10 backdrop-blur">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-3 md:px-5">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-black text-slate-950 md:text-xl">{datos.equipoLocal.nombre}</p>
+              <p className="truncate text-[11px] font-bold text-slate-500">Local</p>
+            </div>
+            <div className="rounded-2xl bg-slate-950 px-4 py-2 text-center text-white shadow-lg">
+              <p className="text-3xl font-black leading-none md:text-5xl">{marcador.local} - {marcador.visitante}</p>
+              <p className="mt-1 text-[11px] font-black uppercase tracking-wide text-emerald-300">{periodoActual ?? datos.partido.estado} · {formatoTiempo(segundosVisibles)}</p>
+            </div>
+            <div className="min-w-0 text-right">
+              <p className="truncate text-sm font-black text-slate-950 md:text-xl">{datos.equipoVisitante.nombre}</p>
+              <p className="truncate text-[11px] font-bold text-slate-500">Visitante</p>
+            </div>
           </div>
-          <div className="flex gap-2 sm:gap-4">
-            <button onClick={() => setCronometroActivo(!cronometroActivo)} className={`p-3 md:p-4 rounded-full ${cronometroActivo ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-red-600 hover:bg-red-700 text-white'} transition shadow-lg`}>
-              {cronometroActivo ? <Pause size={24} className="fill-white" /> : <Play size={24} className="fill-white" />}
-            </button>
-            {periodo === 1 && (
-              <button onClick={manejarCambioPeriodo} className="p-3 md:p-4 rounded-full bg-slate-800 hover:bg-slate-700 transition shadow-lg text-slate-400 border border-slate-700">
-                <SkipForward size={24} />
-              </button>
-            )}
-            <button onClick={reiniciarPartido} className="p-3 md:p-4 rounded-full bg-slate-800 hover:bg-slate-700 transition shadow-lg text-slate-400 border border-slate-700">
-              <RotateCcw size={24} />
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-emerald-50 px-4 py-2 text-xs font-bold text-slate-600">
+            <span>{datos.partido.jornada} · {datos.torneo.nombre}</span>
+            <span>{datos.partido.fecha} · {datos.partido.hora} · {datos.partido.escenario}</span>
+            {datos.acta && <span className="text-emerald-700">Acta v{datos.acta.version} cerrada</span>}
           </div>
-        </div>
+        </header>
 
-        {/* Equipo Visitante */}
-        <div className="w-full md:w-1/3 text-center px-2">
-          <h2 className="text-xl md:text-2xl font-bold text-slate-300 truncate">
-            {equipoVisitante ? equipoVisitante.nombre : 'Visitante'}
-          </h2>
-          <span className="text-5xl md:text-6xl font-black mt-1 block tracking-tighter text-red-500">{golesVisitante}</span>
-        </div>
-      </div>
-
-      {/* ZONA DE JUEGO */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
-        
-        {/* Panel Local */}
-        <div className="w-full lg:w-48 bg-slate-900 rounded-xl border border-slate-800 p-2 md:p-3 flex flex-row lg:flex-col flex-wrap lg:flex-nowrap gap-2 flex-shrink-0 justify-center">
-          <button onClick={() => iniciarRegistroEvento('LOCAL', 'GOL')} className="flex-1 lg:flex-none py-3 bg-slate-800 rounded-lg font-bold hover:bg-slate-700 transition shadow-sm text-sm border border-slate-700">⚽ Gol</button>
-          <button onClick={() => iniciarRegistroEvento('LOCAL', 'AMARILLA')} className="flex-1 lg:flex-none py-3 bg-slate-800 rounded-lg font-bold hover:bg-slate-700 transition shadow-sm text-sm border border-slate-700">🟨 Amarilla</button>
-          <button onClick={() => iniciarRegistroEvento('LOCAL', 'ROJA')} className="flex-1 lg:flex-none py-3 bg-slate-800 rounded-lg font-bold hover:bg-slate-700 transition shadow-sm text-sm border border-slate-700">🟥 Roja</button>
-          <div className="hidden lg:block h-px bg-slate-800 my-1"></div>
-          <button onClick={() => iniciarRegistroEvento('LOCAL', 'CAMBIO')} className="flex-1 lg:flex-none py-3 bg-slate-800 rounded-lg font-bold hover:bg-slate-700 transition shadow-sm text-sm border border-slate-700 text-slate-400">🔄 Cambio</button>
-        </div>
-
-        {/* LÍNEA DE TIEMPO / ALINEACIONES */}
-        <div className="flex-1 min-h-[400px] lg:min-h-0 bg-[#0a111a] rounded-xl border border-slate-800 relative overflow-hidden flex flex-col shadow-inner">
-          <div className="bg-slate-900/80 p-3 text-xs font-bold border-b border-slate-800 flex gap-4 backdrop-blur-sm sticky top-0 z-10">
-            <button onClick={() => setTabActiva('RESUMEN')} className={`flex-1 text-center pb-2 transition-colors ${tabActiva === 'RESUMEN' ? 'border-b-2 border-red-500 text-slate-100 font-bold' : 'text-slate-500 hover:text-slate-350'}`}>RESUMEN DEL PARTIDO</button>
-            <button onClick={() => setTabActiva('ALINEACIONES')} className={`flex-1 text-center pb-2 transition-colors ${tabActiva === 'ALINEACIONES' ? 'border-b-2 border-red-500 text-slate-100 font-bold' : 'text-slate-500 hover:text-slate-350'}`}>ALINEACIONES</button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-4">
-            {tabActiva === 'RESUMEN' && (
-              <div className="flex flex-col gap-1">
-                {eventos.length === 0 ? (
-                  <div className="h-40 flex items-center justify-center text-slate-600 font-medium text-sm">No hay eventos registrados en este partido.</div>
-                ) : (
-                  eventos.map((evento) => (
-                    <div key={evento.id} className={`flex items-center gap-4 py-3 px-2 hover:bg-slate-800/50 rounded-lg transition ${evento.equipo === 'LOCAL' ? 'flex-row' : 'flex-row-reverse'}`}>
-                      <div className="w-12 text-center font-bold text-slate-400">{evento.minuto}'</div>
-                      <div className={`flex items-center gap-3 flex-1 ${evento.equipo === 'LOCAL' ? 'justify-start' : 'justify-end'}`}>
-                        <div className="text-lg">
-                          {evento.tipo === 'GOL' && '⚽'}
-                          {evento.tipo === 'AMARILLA' && '🟨'}
-                          {evento.tipo === 'ROJA' && '🟥'}
-                          {evento.tipo === 'CAMBIO' && '🔄'}
-                        </div>
-                        <span className="font-semibold text-slate-200 text-sm md:text-base">{evento.nombreJugador}</span>
-                        {evento.tipo === 'ROJA' && <span className="text-[10px] bg-red-900/50 text-red-400 px-2 py-0.5 rounded uppercase font-bold border border-red-800/50">Expulsado</span>}
-                      </div>
-                    </div>
-                  ))
-                )}
+        {!soloLectura && (
+          <section className="surface-strong p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-950">Accion principal</h2>
+                <p className="text-slate-500">Solo mostramos lo que puedes hacer ahora.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(datos.partido.estado === 'ASIGNADO' || datos.partido.estado === 'EN_PREPARACION') && <button onClick={abrirConfirmacionInicio} className="btn-primary"><Play size={18} /> Iniciar primer tiempo</button>}
+                {periodoActual && periodoActual !== 'DESCANSO' && controlActual?.activo && <button onClick={() => ejecutar(() => vocaliaService.pausarTiempo(datos.partido.id, usuario.id), 'Tiempo pausado.')} className="btn-secondary"><Pause size={18} /> Pausar</button>}
+                {periodoActual && periodoActual !== 'DESCANSO' && controlActual && !controlActual.activo && <button onClick={() => ejecutar(() => vocaliaService.reanudarTiempo(datos.partido.id, usuario.id), 'Tiempo reanudado.')} className="btn-secondary"><Clock size={18} /> Reanudar</button>}
+                {datos.partido.estado === 'PRIMER_TIEMPO' && <button onClick={() => window.confirm('Finalizar primer tiempo?') && ejecutar(() => vocaliaService.finalizarPrimerTiempo(datos.partido.id, usuario.id), 'Primer tiempo finalizado.')} className="btn-secondary">Finalizar primer tiempo</button>}
+                {datos.partido.estado === 'DESCANSO' && <button onClick={() => ejecutar(() => vocaliaService.iniciarSegundoTiempo(datos.partido.id, usuario.id), 'Segundo tiempo iniciado.')} className="btn-primary">Iniciar segundo tiempo</button>}
+                {datos.partido.estado === 'SEGUNDO_TIEMPO' && <button onClick={() => window.confirm('Finalizar partido?') && ejecutar(() => vocaliaService.finalizarPartido(datos.partido.id, usuario.id), 'Partido finalizado.')} className="btn-danger">Finalizar partido</button>}
+                {datos.partido.estado === 'SUSPENDIDO' && <button onClick={() => ejecutar(() => vocaliaService.reanudarPartido(datos.partido.id, usuario.id), 'Partido reanudado.')} className="btn-primary">Reanudar</button>}
+              </div>
+            </div>
+            {datos.partido.estado !== 'SUSPENDIDO' && datos.partido.estado !== 'PENDIENTE_ACTA' && (
+              <div className="mt-4 grid gap-2 md:grid-cols-[1fr_auto]">
+                <input value={motivoSuspension} onChange={(e) => setMotivoSuspension(e.target.value)} placeholder="Motivo si necesitas suspender" className="field" />
+                <button onClick={() => motivoSuspension.trim() ? ejecutar(() => vocaliaService.suspenderPartido(datos.partido.id, usuario.id, motivoSuspension), 'Partido suspendido.') : toast.error('Escribe el motivo de la suspension.')} className="btn-secondary text-orange-700"><AlertTriangle size={18} /> Suspender</button>
               </div>
             )}
+          </section>
+        )}
 
-            {tabActiva === 'ALINEACIONES' && (
-              <div className="grid grid-cols-2 gap-6 h-full text-sm">
-                <div className="border-r border-slate-800/50 pr-3">
-                  <h4 className="font-bold text-slate-400 mb-3 uppercase tracking-wider text-xs border-b border-slate-800 pb-1">{equipoLocal?.nombre || 'Local'}</h4>
-                  <ul className="space-y-2">
-                    {jugadoresLocal.filter(j => titularesLocal.includes(j.id)).map(j => {
-                      const esExpulsado = jugadoresExpulsadosIds.includes(j.id);
-                      return (
-                        <li key={j.id} className={`flex items-center gap-3 p-2 rounded ${esExpulsado ? 'opacity-40 bg-red-950/10' : 'bg-slate-900/40'}`}>
-                          <span className="w-6 text-center font-mono font-bold text-slate-400">{j.numeroDorsal}</span>
-                          <span className={`truncate ${esExpulsado ? 'line-through text-slate-500' : 'text-slate-200'}`}>{j.nombres} {j.apellidos}</span>
-                          <div className="ml-auto flex gap-1">
-                            {capitanLocal === j.id && <span className="text-[10px] bg-emerald-900/50 text-emerald-400 px-1.5 py-0.5 rounded font-bold border border-emerald-800/50">C</span>}
-                            {arqueroLocal === j.id && <span className="text-[10px] bg-amber-900/50 text-amber-400 px-1.5 py-0.5 rounded font-bold border border-amber-800/50">ARQ</span>}
-                            {esExpulsado && <span className="text-xs ml-1">🟥</span>}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">{renderAlineacion('LOCAL')}{renderAlineacion('VISITANTE')}</div>
+
+        <section className="surface-strong p-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+            <div><h2 className="text-2xl font-black text-slate-950">Acciones rapidas</h2><p className="text-sm text-slate-500">Gol, tarjetas y cambios con el minuto actual precargado.</p></div>
+            {!soloLectura && eventosDeportivosHabilitados.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 sm:flex">
+                {eventosDeportivosHabilitados.map((tipo) => (
+                  <button key={tipo.value} onClick={() => abrirEvento('LOCAL', tipo.value)} className="min-h-14 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.99]">
+                    <span className="mr-2">{iconoEvento(tipo.value)}</span>{tipo.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            {datos.eventos.length === 0 ? <p className="rounded-2xl bg-emerald-50 py-10 text-center font-bold text-slate-500">Todavia no hay eventos. Cuando pase algo en cancha, registralo aqui.</p> : [...datos.eventos].reverse().map((evento) => {
+              const jugador = jugadoresPorId.get(evento.jugadorId ?? '');
+              const sale = jugadoresPorId.get(evento.jugadorSaleId ?? '');
+              const entra = jugadoresPorId.get(evento.jugadorEntraId ?? '');
+              return (
+                <div key={evento.id} className={`flex gap-3 rounded-2xl border p-3 ${evento.activo ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-lg font-black text-emerald-700">{iconoEvento(evento.tipoEvento)}</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-black text-slate-950">{evento.minuto}' · {evento.tipoEvento}{!evento.activo && <span className="ml-2 text-xs text-red-500">(anulado)</span>}</p>
+                    <p className="text-sm text-slate-500">{evento.tipoEvento === 'CAMBIO' ? `Sale ${nombreJugador(sale)} · Entra ${nombreJugador(entra)}` : evento.descripcion || nombreJugador(jugador)}</p>
+                  </div>
+                  {!soloLectura && evento.activo && <button aria-label="Anular evento" onClick={() => window.confirm('Anular este evento? El marcador se recalculara si era un gol.') && ejecutar(() => vocaliaService.anularEvento(datos.partido.id, evento.id, usuario.id), 'Evento anulado.')} className="self-start rounded-full px-3 py-1 text-xs font-black text-red-600 hover:bg-red-50">Anular</button>}
                 </div>
+              );
+            })}
+          </div>
+        </section>
 
-                <div>
-                  <h4 className="font-bold text-slate-400 mb-3 uppercase tracking-wider text-xs border-b border-slate-800 pb-1">{equipoVisitante?.nombre || 'Visitante'}</h4>
-                  <ul className="space-y-2">
-                    {jugadoresVisitante.filter(j => titularesVisitante.includes(j.id)).map(j => {
-                      const esExpulsado = jugadoresExpulsadosIds.includes(j.id);
-                      return (
-                        <li key={j.id} className={`flex items-center gap-3 p-2 rounded ${esExpulsado ? 'opacity-40 bg-red-950/10' : 'bg-slate-900/40'}`}>
-                          <span className="w-6 text-center font-mono font-bold text-slate-400">{j.numeroDorsal}</span>
-                          <span className={`truncate ${esExpulsado ? 'line-through text-slate-500' : 'text-slate-200'}`}>{j.nombres} {j.apellidos}</span>
-                          <div className="ml-auto flex gap-1">
-                            {capitanVisitante === j.id && <span className="text-[10px] bg-emerald-900/50 text-emerald-400 px-1.5 py-0.5 rounded font-bold border border-emerald-800/50">C</span>}
-                            {arqueroVisitante === j.id && <span className="text-[10px] bg-amber-900/50 text-amber-400 px-1.5 py-0.5 rounded font-bold border border-amber-800/50">ARQ</span>}
-                            {esExpulsado && <span className="text-xs ml-1">🟥</span>}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
+        <section className="surface-strong p-4">
+          <h2 className="mb-1 text-2xl font-black text-slate-950">Novedades</h2>
+          <p className="mb-4 text-sm text-slate-500">Escribe como hablarías en cancha. El teclado del telefono puede usar dictado.</p>
+          {!soloLectura && (
+            <form onSubmit={guardarNovedad} className="grid gap-3 mb-5">
+              <select value={tipoNovedad} onChange={(e) => setTipoNovedad(e.target.value as TipoNovedad)} className="field">{tiposNovedad.map((tipo) => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}</select>
+              <textarea value={descripcionNovedad} onChange={(e) => setDescripcionNovedad(e.target.value)} rows={3} placeholder="Ej: La cancha tiene poca luz en el arco norte" className="field" />
+              <button className="btn-primary">Guardar novedad</button>
+            </form>
+          )}
+          <div className="space-y-2">{datos.novedades.length === 0 ? <p className="rounded-2xl bg-slate-50 p-5 text-sm font-bold text-slate-500">No hay novedades. Todo tranquilo por ahora.</p> : [...datos.novedades].reverse().map((n) => <div key={n.id} className={`rounded-2xl border p-3 ${n.activa ? 'border-slate-200 bg-white' : 'opacity-60 border-slate-100 bg-slate-50'}`}><p className="font-black text-slate-950">{n.tipo}</p><p className="text-slate-500">{n.descripcion}</p>{!soloLectura && n.activa && <button onClick={() => ejecutar(() => vocaliaService.anularNovedad(datos.partido.id, n.id, usuario.id), 'Novedad anulada.')} className="mt-2 text-sm font-black text-red-600">Anular</button>}</div>)}</div>
+        </section>
+
+        {(revisionRapida || soloLectura) && (
+          <section className="surface-strong p-4">
+            <h2 className="text-2xl font-black text-slate-950 mb-2">{soloLectura ? 'Acta cerrada' : 'Revision previa al cierre'}</h2>
+            <p className="text-slate-400">Marcador final: {datos.equipoLocal.nombre} {marcador.local} - {marcador.visitante} {datos.equipoVisitante.nombre}</p>
+            <p className="text-slate-400">Eventos activos: {datos.eventos.filter((e) => e.activo).length} · Novedades activas: {datos.novedades.filter((n) => n.activa).length}</p>
+            {validacionActa && (
+              <div className="grid md:grid-cols-2 gap-3 mt-4">
+                <div className="rounded-lg bg-red-950/40 border border-red-900 p-3">
+                  <h3 className="font-bold text-red-300">Errores que debes corregir</h3>
+                  {validacionActa.errores.length ? validacionActa.errores.map((e) => <p key={e} className="text-sm text-red-100">{e}</p>) : <p className="text-sm text-slate-400">Sin errores.</p>}
+                </div>
+                <div className="rounded-lg bg-amber-950/40 border border-amber-900 p-3">
+                  <h3 className="font-bold text-amber-300">Advertencias</h3>
+                  {validacionActa.advertencias.length ? validacionActa.advertencias.map((a) => <p key={a} className="text-sm text-amber-100">{a}</p>) : <p className="text-sm text-slate-400">Sin advertencias.</p>}
                 </div>
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Panel Visitante */}
-        <div className="w-full lg:w-48 bg-slate-900 rounded-xl border border-slate-800 p-2 md:p-3 flex flex-row lg:flex-col flex-wrap lg:flex-nowrap gap-2 flex-shrink-0 justify-center">
-          <button onClick={() => iniciarRegistroEvento('VISITANTE', 'GOL')} className="flex-1 lg:flex-none py-3 bg-slate-800 rounded-lg font-bold hover:bg-slate-700 transition shadow-sm text-sm border border-slate-700">⚽ Gol</button>
-          <button onClick={() => iniciarRegistroEvento('VISITANTE', 'AMARILLA')} className="flex-1 lg:flex-none py-3 bg-slate-800 rounded-lg font-bold hover:bg-slate-700 transition shadow-sm text-sm border border-slate-700">🟨 Amarilla</button>
-          <button onClick={() => iniciarRegistroEvento('VISITANTE', 'ROJA')} className="flex-1 lg:flex-none py-3 bg-slate-800 rounded-lg font-bold hover:bg-slate-700 transition shadow-sm text-sm border border-slate-700">🟥 Roja</button>
-          <div className="hidden lg:block h-px bg-slate-800 my-1"></div>
-          <button onClick={() => iniciarRegistroEvento('VISITANTE', 'CAMBIO')} className="flex-1 lg:flex-none py-3 bg-slate-800 rounded-lg font-bold hover:bg-slate-700 transition shadow-sm text-sm border border-slate-700 text-slate-400">🔄 Cambio</button>
-        </div>
+            {datos.acta && <p className="text-emerald-400 mt-2">Snapshot local version {datos.acta.version}. Cerrada por {datos.acta.cerradaPor}.</p>}
+            {!soloLectura && (
+              <div className="mt-4 space-y-3">
+                <label className="flex gap-2 text-slate-300"><input type="checkbox" checked={confirmarCierre} onChange={(e) => setConfirmarCierre(e.target.checked)} /> Confirmo que la informacion registrada es correcta.</label>
+                <button onClick={() => window.confirm('Cerrar acta? Despues del cierre quedara en solo lectura.') && ejecutar(() => vocaliaService.cerrarActa(datos.partido.id, usuario, confirmarCierre).then(() => undefined), 'Acta cerrada.')} className="btn-primary"><FileCheck2 size={18} /> Cerrar acta</button>
+              </div>
+            )}
+          </section>
+        )}
       </div>
 
-      {/* === MODAL DE REGISTRO === */}
-      {modalAbierto && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-          <div className="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-700 flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center p-4 border-b border-slate-800 bg-slate-950">
-              <h2 className="text-lg md:text-xl font-bold text-slate-100 flex items-center gap-2">
-                {tipoEventoSeleccionado === 'GOL' && '⚽ Registrar Gol'}
-                {tipoEventoSeleccionado === 'AMARILLA' && '🟨 Tarjeta Amarilla'}
-                {tipoEventoSeleccionado === 'ROJA' && '🟥 Tarjeta Roja'}
-                {tipoEventoSeleccionado === 'CAMBIO' && '🔄 Registrar Cambio'}
-                <span className="text-slate-400 text-sm font-normal ml-2">(Min {Math.floor(segundos / 60)})</span>
-              </h2>
-              <button onClick={() => setModalAbierto(false)} className="text-slate-400 hover:text-slate-200 bg-slate-800 p-2 rounded-full transition"><X size={20} /></button>
+      {modalInicio && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-3xl rounded-3xl bg-white p-5 shadow-2xl">
+            <div className="flex items-center justify-between mb-4"><h2 className="text-2xl font-black">Confirmar inicio</h2><button onClick={() => setModalInicio(false)}><X /></button></div>
+            <p className="text-slate-600">{datos.equipoLocal.nombre} vs {datos.equipoVisitante.nombre} · {datos.partido.hora} · {datos.partido.escenario}</p>
+            <div className="grid md:grid-cols-2 gap-4 mt-4">
+              <div className="rounded-2xl bg-emerald-50 p-3"><h3 className="font-bold text-emerald-700">Local</h3><p>Titulares: {Object.values(seleccionLocal).filter((s) => s.rol === 'TITULAR').length}</p><p>Suplentes: {Object.values(seleccionLocal).filter((s) => s.rol === 'SUPLENTE').length}</p></div>
+              <div className="rounded-2xl bg-sky-50 p-3"><h3 className="font-bold text-sky-700">Visitante</h3><p>Titulares: {Object.values(seleccionVisitante).filter((s) => s.rol === 'TITULAR').length}</p><p>Suplentes: {Object.values(seleccionVisitante).filter((s) => s.rol === 'SUPLENTE').length}</p></div>
             </div>
-
-            <div className="p-4 overflow-y-auto flex-1">
-              <p className="text-slate-400 mb-4 font-medium text-sm">Selecciona al jugador implicado:</p>
-              <div className="grid gap-2">
-                {(equipoSeleccionado === 'LOCAL' ? jugadoresLocal : jugadoresVisitante)
-                  .filter(jugador => !jugadoresExpulsadosIds.includes(jugador.id))
-                  .map(jugador => {
-                    const esTitular = (equipoSeleccionado === 'LOCAL' ? titularesLocal : titularesVisitante).includes(jugador.id);
-                    return (
-                      <button key={jugador.id} onClick={() => registrarEventoDefinitivo(jugador)} className={`flex items-center gap-4 p-3 rounded-xl transition text-left w-full border ${esTitular ? 'bg-slate-800 hover:bg-slate-700 border-slate-700' : 'bg-slate-900 hover:bg-slate-800 border-slate-800'}`}>
-                        <span className="bg-slate-950 text-slate-300 w-10 h-10 rounded-full flex items-center justify-center font-bold font-mono border border-slate-800">{jugador.numeroDorsal}</span>
-                        <span className="font-semibold text-slate-200 text-base md:text-lg">{jugador.nombres} {jugador.apellidos}</span>
-                        {!esTitular && <span className="ml-auto text-xs bg-slate-800 text-slate-400 px-2 py-1 rounded">Banca</span>}
-                      </button>
-                    );
-                  })}
+            {validacionPreparacion && (
+              <div className="grid md:grid-cols-2 gap-3 mt-4">
+                <div className="rounded-lg bg-red-950/40 border border-red-900 p-3">
+                  <h3 className="font-bold text-red-300">Errores</h3>
+                  {validacionPreparacion.errores.length ? validacionPreparacion.errores.map((e) => <p key={e} className="text-sm text-red-100">{e}</p>) : <p className="text-sm text-slate-400">Sin errores.</p>}
+                </div>
+                <div className="rounded-lg bg-amber-950/40 border border-amber-900 p-3">
+                  <h3 className="font-bold text-amber-300">Advertencias</h3>
+                  {validacionPreparacion.advertencias.length ? validacionPreparacion.advertencias.map((a) => <p key={a} className="text-sm text-amber-100">{a}</p>) : <p className="text-sm text-slate-400">Sin advertencias.</p>}
+                </div>
               </div>
-            </div>
+            )}
+            <div className="flex justify-end gap-3 mt-5"><button onClick={() => setModalInicio(false)} className="btn-secondary">Volver a revisar</button><button onClick={() => ejecutar(() => vocaliaService.iniciarPrimerTiempo(datos.partido.id, usuario.id).then(() => setModalInicio(false)), 'Primer tiempo iniciado.')} className="btn-primary">Iniciar primer tiempo</button></div>
           </div>
+        </div>
+      )}
+
+      {modalEvento && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <form onSubmit={registrarEvento} className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100"><h2 className="text-xl font-black text-slate-950">Registrar {tipoEvento.toLowerCase()}</h2><button type="button" onClick={() => setModalEvento(false)} className="rounded-full bg-slate-100 p-2 hover:bg-slate-200"><X size={18} /></button></div>
+            <div className="p-4 grid gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <select value={tipoEvento} onChange={(e) => setTipoEvento(e.target.value as TipoEventoPartido)} className="field">{tiposEvento.map((tipo) => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}</select>
+                <select value={equipoEvento} onChange={(e) => setEquipoEvento(e.target.value as EquipoClave)} className="field"><option value="LOCAL">{datos.equipoLocal.nombre}</option><option value="VISITANTE">{datos.equipoVisitante.nombre}</option></select>
+                <input aria-label="Minuto" type="number" min={0} step={1} value={minuto} onChange={(e) => setMinuto(e.target.value)} className="field" />
+              </div>
+              {tipoEvento === 'CAMBIO' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><select value={jugadorSaleId} onChange={(e) => setJugadorSaleId(e.target.value)} className="field"><option value="">Sale</option>{jugadoresEnCancha.map((j) => <option key={j.id} value={j.id}>{j.numeroDorsal} · {nombreJugador(j)}</option>)}</select><select value={jugadorEntraId} onChange={(e) => setJugadorEntraId(e.target.value)} className="field"><option value="">Entra</option>{suplentesDisponibles.map((j) => <option key={j.id} value={j.id}>{j.numeroDorsal} · {nombreJugador(j)}</option>)}</select></div>
+              ) : (
+                <select value={jugadorEventoId} onChange={(e) => setJugadorEventoId(e.target.value)} className="field">{jugadoresEvento.map((j) => <option key={j.id} value={j.id}>{j.numeroDorsal} · {nombreJugador(j)}</option>)}</select>
+              )}
+              <textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={3} placeholder="Detalle opcional" className="field" />
+            </div>
+            <div className="flex justify-end gap-3 p-4 border-t border-slate-100"><button type="button" onClick={() => setModalEvento(false)} className="btn-secondary">Cancelar</button><button type="submit" className="btn-primary"><CheckCircle2 size={18} /> Guardar evento</button></div>
+          </form>
         </div>
       )}
     </div>

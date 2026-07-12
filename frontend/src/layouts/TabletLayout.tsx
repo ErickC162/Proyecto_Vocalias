@@ -1,22 +1,43 @@
-import { Link, Outlet } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { ClipboardList, History, Home, LogOut } from 'lucide-react';
+import type { Usuario } from '@saas/shared';
+import { sesionService } from '../services/sesion.service';
 
 export const TabletLayout = () => {
-  return (
-    // Cambiamos h-screen por min-h-screen para que pueda crecer hacia abajo
-    <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100">
-      {/* Barra superior */}
-      <header className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex justify-between items-center shrink-0">
-        <h1 className="text-lg font-semibold text-slate-300">Modo Vocalía (Offline)</h1>
-        <Link to="/" className="text-sm px-3 py-1 bg-slate-800 rounded hover:bg-slate-700 transition">
-          Cerrar Sesión
-        </Link>
-      </header>
+  const navigate = useNavigate();
+  const [usuario, setUsuario] = useState<Usuario | null>(null);
 
-      {/* El área de juego */}
-      {/* Cambiamos overflow-hidden por overflow-auto para permitir el scroll si es necesario */}
-      <main className="flex-1 overflow-auto">
+  useEffect(() => {
+    sesionService.obtenerUsuarioActivo().then(setUsuario);
+  }, []);
+
+  const cerrarSesion = () => {
+    sesionService.cerrarSesion();
+    navigate('/');
+  };
+
+  return (
+    <div className="app-shell min-h-screen pb-20 md:pb-0">
+      <header className="sticky top-0 z-40 border-b border-white/70 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+          <Link to="/vocal" className="min-w-0">
+            <p className="truncate text-base font-black text-slate-950">Modo vocal</p>
+            {usuario && <p className="truncate text-xs font-bold text-slate-500">{usuario.nombre} {usuario.apellido}</p>}
+          </Link>
+          <button onClick={cerrarSesion} className="btn-secondary !min-h-10 !px-3">
+            <LogOut size={16} /> <span className="hidden sm:inline">Salir</span>
+          </button>
+        </div>
+      </header>
+      <main>
         <Outlet />
       </main>
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 border-t border-slate-200 bg-white/95 px-3 py-2 text-xs font-black text-slate-600 backdrop-blur md:hidden">
+        <Link to="/" className="flex flex-col items-center gap-1"><Home size={20} /> Inicio</Link>
+        <Link to="/vocal" className="flex flex-col items-center gap-1 text-emerald-700"><ClipboardList size={20} /> Partido</Link>
+        <Link to="/vocal" className="flex flex-col items-center gap-1"><History size={20} /> Historial</Link>
+      </nav>
     </div>
   );
 };
