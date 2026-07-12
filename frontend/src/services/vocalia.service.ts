@@ -58,7 +58,7 @@ export interface Marcador {
   visitante: number;
 }
 
-const EVENTOS_DEPORTIVOS: TipoEventoPartido[] = ['GOL', 'AUTOGOL', 'TARJETA_AMARILLA', 'TARJETA_ROJA', 'DOBLE_AMARILLA', 'CAMBIO'];
+const EVENTOS_DEPORTIVOS: TipoEventoPartido[] = ['GOL', 'AUTOGOL', 'TARJETA_AMARILLA', 'TARJETA_ROJA', 'CAMBIO'];
 
 function ahoraIso() {
   return new Date().toISOString();
@@ -235,7 +235,7 @@ export const vocaliaService = {
   obtenerPartidosAsignados: async (vocalId: string): Promise<PartidoAsignadoResumen[]> => {
     const asignaciones = await db.asignacionesVocal.where('vocalId').equals(vocalId).and((a) => a.activa).toArray();
     const partidos = await Promise.all(asignaciones.map((asignacion) => db.partidos.get(asignacion.partidoId)));
-    const activos = partidos.filter((partido): partido is VocaliaPartido['partido'] => Boolean(partido && !partido.eliminado && partido.estado !== 'CANCELADO'));
+    const activos = partidos.filter((partido): partido is VocaliaPartido['partido'] => Boolean(partido && !partido.eliminado && partido.estado !== 'CANCELADO' && partido.estado !== 'PENDIENTE_ACTA' && partido.estado !== 'ACTA_CERRADA'));
 
     return await Promise.all(
       activos.map(async (partido) => {
@@ -313,11 +313,14 @@ export const vocaliaService = {
       const delEquipo = alineaciones.filter((item) => item.equipoId === equipo.id);
       const titulares = delEquipo.filter((item) => item.rol === 'TITULAR');
       const suplentes = delEquipo.filter((item) => item.rol === 'SUPLENTE');
-      if (titulares.length === 0) errores.push(`${equipo.nombre}: no tiene titulares.`);
-      if (titulares.length < REGLAS_PARTIDO.minTitularesAdvertencia) advertencias.push(`${equipo.nombre}: tiene pocos titulares (${titulares.length}).`);
+      const capitanesTitulares = titulares.filter((item) => item.esCapitan);
+      if (titulares.length < REGLAS_PARTIDO.minTitularesAdvertencia) {
+        errores.push(`${equipo.nombre}: necesita al menos ${REGLAS_PARTIDO.minTitularesAdvertencia} titulares. Tiene ${titulares.length}; faltan ${REGLAS_PARTIDO.minTitularesAdvertencia - titulares.length}.`);
+      }
       if (suplentes.length < REGLAS_PARTIDO.minSuplentesAdvertencia) advertencias.push(`${equipo.nombre}: tiene pocos suplentes.`);
-      if (!delEquipo.some((item) => item.esArquero)) errores.push(`${equipo.nombre}: no tiene arquero seleccionado.`);
-      if (!delEquipo.some((item) => item.esCapitan)) errores.push(`${equipo.nombre}: no tiene capitan seleccionado.`);
+      if (delEquipo.filter((item) => item.esCapitan).length > 1) errores.push(`${equipo.nombre}: tiene mas de un capitan seleccionado.`);
+      if (capitanesTitulares.length === 0) errores.push(`${equipo.nombre}: debe tener un capitan titular antes de iniciar el partido.`);
+      if (capitanesTitulares.length > 1) errores.push(`${equipo.nombre}: tiene mas de un capitan titular.`);
 
       const usados = new Set<string>();
       for (const alineacion of delEquipo) {
@@ -342,7 +345,7 @@ export const vocaliaService = {
     const preparacion = await vocaliaService.validarPreparacionPartido(partidoId);
     const errores = [...preparacion.errores];
     const advertencias = [...preparacion.advertencias];
-    if (vocalia.partido.estado !== 'PENDIENTE_ACTA') errores.push('El partido debe estar pendiente de acta para cerrar.');
+    if (vocalia.partido.estado !== 'REVISION_ACTA') errores.push('El partido debe estar en revision del acta antes de enviarlo.');
     if (vocalia.eventos.some((evento) => evento.minuto < 0 || !Number.isInteger(evento.minuto))) errores.push('Hay eventos con minutos invalidos.');
     if (vocalia.eventos.some((evento) => evento.tipoEvento === 'SUSPENSION') && !vocalia.novedades.some((novedad) => novedad.tipo === 'SUSPENSION' && novedad.activa)) {
       errores.push('Existe una suspension sin novedad activa de motivo.');
@@ -364,8 +367,7 @@ export const vocaliaService = {
     const ids = new Set<string>();
     const titulares = alineacion.filter((item) => item.rol === 'TITULAR');
     if (titulares.length > REGLAS_PARTIDO.maxTitulares) throw new Error(`No se pueden seleccionar mas de ${REGLAS_PARTIDO.maxTitulares} titulares.`);
-    if (!alineacion.some((item) => item.esArquero)) throw new Error('Debes identificar un arquero.');
-    if (!alineacion.some((item) => item.esCapitan)) throw new Error('Debes identificar un capitan.');
+    if (alineacion.filter((item) => item.esCapitan).length > 1) throw new Error('Cada equipo puede tener un solo capitan.');
 
     for (const item of alineacion) {
       if (ids.has(item.jugadorId)) throw new Error('Un jugador no puede repetirse en la alineacion.');
@@ -396,9 +398,78 @@ export const vocaliaService = {
     });
   },
 
+  limpiarAlineacionEquipo: async (partidoId: string, equipoId: string): Promise<void> => {
+    const partido = await db.partidos.get(partidoId);
+    if (!partido) throw new Error('No se encontro el partido.');
+    if (!puedePrepararAlineacion(partido.estado)) throw new Error('La alineacion solo se puede limpiar durante la preparacion.');
+    if (equipoId !== partido.equipoLocalId && equipoId !== partido.equipoVisitanteId) throw new Error('El equipo no pertenece al partido.');
+    const existentes = await db.alineaciones.where('[partidoId+equipoId]').equals([partidoId, equipoId]).toArray();
+    if (existentes.length > 0) await db.alineaciones.bulkDelete(existentes.map((item) => item.id));
+  },
+
+  actualizarCapitanEquipo: async (partidoId: string, equipoId: string, jugadorId: string, esCapitan: boolean): Promise<void> => {
+    const partido = await db.partidos.get(partidoId);
+    if (!partido) throw new Error('No se encontro el partido.');
+    if (partido.estado === 'ACTA_CERRADA' || partido.estado === 'CANCELADO' || partido.estado === 'PENDIENTE_ACTA' || partido.estado === 'REVISION_ACTA') {
+      throw new Error('No se puede modificar el capitan en el estado actual.');
+    }
+    if (equipoId !== partido.equipoLocalId && equipoId !== partido.equipoVisitanteId) throw new Error('El equipo no pertenece al partido.');
+    const alineaciones = await db.alineaciones.where('[partidoId+equipoId]').equals([partidoId, equipoId]).toArray();
+    const jugador = alineaciones.find((item) => item.jugadorId === jugadorId);
+    if (!jugador) throw new Error('Primero agrega al jugador como titular o suplente.');
+    if (esCapitan && (jugador.rol !== 'TITULAR' || jugador.estadoActual !== 'EN_CANCHA')) {
+      throw new Error('Solo un jugador titular puede ser capitan.');
+    }
+    await db.transaction('rw', db.alineaciones, async () => {
+      for (const alineacion of alineaciones) {
+        await db.alineaciones.update(alineacion.id, { esCapitan: esCapitan && alineacion.jugadorId === jugadorId });
+      }
+    });
+  },
+
+  agregarJugadorTarde: async (partidoId: string, equipoId: string, jugadorId: string, rol: 'TITULAR' | 'SUPLENTE' = 'SUPLENTE'): Promise<void> => {
+    const partido = await db.partidos.get(partidoId);
+    if (!partido) throw new Error('No se encontro el partido.');
+    if (partido.estado === 'ACTA_CERRADA' || partido.estado === 'CANCELADO' || partido.estado === 'PENDIENTE_ACTA' || partido.estado === 'REVISION_ACTA') {
+      throw new Error('No se pueden incorporar jugadores en el estado actual.');
+    }
+    if (equipoId !== partido.equipoLocalId && equipoId !== partido.equipoVisitanteId) throw new Error('El equipo no pertenece al partido.');
+    const jugador = await db.jugadores.get(jugadorId);
+    if (!jugador || jugador.equipoId !== equipoId) throw new Error('El jugador no pertenece al equipo seleccionado.');
+    const disponibilidad = await sancionesService.obtenerEstadoJugadorParaPartido(jugador.id, partidoId);
+    if (!disponibilidad.habilitado) throw new Error(disponibilidad.motivo ?? 'El jugador no esta habilitado.');
+    const existente = await db.alineaciones.where('[partidoId+jugadorId]').equals([partidoId, jugadorId]).first();
+    if (existente) throw new Error('El jugador ya esta registrado en este partido.');
+    const delEquipo = await db.alineaciones.where('[partidoId+equipoId]').equals([partidoId, equipoId]).toArray();
+    const registro: AlineacionPartido = {
+      id: `${partidoId}-${equipoId}-${jugadorId}`,
+      partidoId,
+      equipoId,
+      jugadorId,
+      rol,
+      esArquero: false,
+      esCapitan: false,
+      enCancha: rol === 'TITULAR',
+      esInicial: false,
+      estadoActual: rol === 'TITULAR' ? 'EN_CANCHA' : 'SUPLENTE_DISPONIBLE',
+      orden: delEquipo.length,
+      actualizadoEn: ahoraIso(),
+    };
+    await db.alineaciones.add(registro);
+  },
+
+  guardarColoresCamiseta: async (partidoId: string, colorLocal: string, colorVisitante: string): Promise<void> => {
+    const partido = await db.partidos.get(partidoId);
+    if (!partido) throw new Error('No se encontro el partido.');
+    if (!puedePrepararAlineacion(partido.estado)) throw new Error('Los colores se definen antes de iniciar el partido.');
+    if (!colorLocal.trim() || !colorVisitante.trim()) throw new Error('Define el color de camiseta de los dos equipos.');
+    await db.partidos.update(partidoId, { colorCamisetaLocal: colorLocal.trim(), colorCamisetaVisitante: colorVisitante.trim() });
+  },
+
   iniciarPrimerTiempo: async (partidoId: string, usuarioId: string): Promise<void> => {
     const partido = await obtenerPartidoConAcceso(partidoId, usuarioId);
     if (partido.estado !== 'ASIGNADO' && partido.estado !== 'EN_PREPARACION') throw new Error('El partido no esta listo para iniciar.');
+    if (!partido.colorCamisetaLocal || !partido.colorCamisetaVisitante) throw new Error('Define el color de camiseta de ambos equipos antes de iniciar.');
     const validacion = await vocaliaService.validarPreparacionPartido(partidoId);
     if (!validacion.valido) throw new Error(validacion.errores.join(' '));
     const control: ControlTiempoPartido = {
@@ -459,6 +530,18 @@ export const vocaliaService = {
   iniciarSegundoTiempo: async (partidoId: string, usuarioId: string): Promise<void> => {
     const partido = await obtenerPartidoConAcceso(partidoId, usuarioId);
     if (partido.estado !== 'DESCANSO') throw new Error('Primero debes finalizar el primer tiempo.');
+    const [equipoLocal, equipoVisitante, alineaciones] = await Promise.all([
+      db.equipos.get(partido.equipoLocalId),
+      db.equipos.get(partido.equipoVisitanteId),
+      db.alineaciones.where('partidoId').equals(partidoId).toArray(),
+    ]);
+    const validarCapitanEnCancha = (equipoId: string, nombreEquipo: string) => {
+      const capitanes = alineaciones.filter((item) => item.equipoId === equipoId && item.esCapitan && item.estadoActual === 'EN_CANCHA');
+      if (capitanes.length === 0) throw new Error(`${nombreEquipo}: selecciona un capitan titular antes de iniciar el segundo tiempo.`);
+      if (capitanes.length > 1) throw new Error(`${nombreEquipo}: tiene mas de un capitan titular.`);
+    };
+    validarCapitanEnCancha(partido.equipoLocalId, equipoLocal?.nombre ?? 'Equipo local');
+    validarCapitanEnCancha(partido.equipoVisitanteId, equipoVisitante?.nombre ?? 'Equipo visitante');
     const control: ControlTiempoPartido = {
       id: controlId(partidoId, 'SEGUNDO_TIEMPO'),
       partidoId,
@@ -481,7 +564,7 @@ export const vocaliaService = {
     const control = await db.controlesTiempo.get(controlId(partidoId, 'SEGUNDO_TIEMPO'));
     await db.transaction('rw', db.partidos, db.eventos, db.controlesTiempo, async () => {
       if (control) await db.controlesTiempo.update(control.id, { activo: false, segundosAcumulados: calcularSegundosControl(control), actualizadoEn: ahoraIso() });
-      await db.partidos.update(partidoId, { estado: 'PENDIENTE_ACTA', finRealEn: ahoraIso() });
+      await db.partidos.update(partidoId, { estado: 'REVISION_ACTA', finRealEn: ahoraIso() });
       await crearEventoSistema(partidoId, usuarioId, 'FIN_SEGUNDO_TIEMPO', 2, 'Fin del segundo tiempo');
       await crearEventoSistema(partidoId, usuarioId, 'FIN_PARTIDO', 2, 'Fin del partido');
     });
@@ -490,12 +573,14 @@ export const vocaliaService = {
   crearEvento: async (input: CrearEventoInput): Promise<EventoPartido[]> => {
     if (!Number.isInteger(input.minuto) || input.minuto < 0) throw new Error('El minuto debe ser un entero positivo.');
     const partido = await obtenerPartidoConAcceso(input.partidoId, input.registradoPorUsuarioId);
+    if (input.tipoEvento === 'DOBLE_AMARILLA') throw new Error('La doble amarilla se genera automaticamente al registrar la segunda amarilla.');
     if (!puedeRegistrarEventoDeportivo(partido.estado, input.tipoEvento)) throw new Error('No se pueden registrar eventos deportivos en el estado actual.');
     const jugador = await validarJugadorDelPartido(partido, input.jugadorId);
 
     if ((input.tipoEvento === 'GOL' || input.tipoEvento === 'AUTOGOL' || input.tipoEvento === 'TARJETA_AMARILLA' || input.tipoEvento === 'TARJETA_ROJA') && (!jugador || !input.equipoId || jugador.equipoId !== input.equipoId)) {
       throw new Error('El evento debe estar asociado a un jugador valido del equipo.');
     }
+    if (input.tipoEvento === 'TARJETA_ROJA' && !input.descripcion?.trim()) throw new Error('El motivo de la tarjeta roja directa es obligatorio.');
 
     const alineaciones = await db.alineaciones.where('partidoId').equals(input.partidoId).toArray();
     const alineacionJugador = jugador ? alineaciones.find((item) => item.jugadorId === jugador.id) : undefined;
@@ -537,13 +622,13 @@ export const vocaliaService = {
       ? await db.eventos.where('partidoId').equals(input.partidoId).and((evento) => evento.activo && evento.jugadorId === input.jugadorId && evento.tipoEvento === 'TARJETA_AMARILLA').count()
       : 0;
     if (input.tipoEvento === 'TARJETA_AMARILLA' && amarillasPrevias >= 1) {
-      eventosAGuardar.push({ ...eventosAGuardar[0], id: crypto.randomUUID(), tipoEvento: 'DOBLE_AMARILLA', timestampOriginal: ahora + 1, descripcion: 'Expulsion por doble amarilla' });
+      eventosAGuardar.push({ ...eventosAGuardar[0], id: crypto.randomUUID(), tipoEvento: 'DOBLE_AMARILLA', timestampOriginal: ahora + 1, descripcion: 'Expulsion por doble amonestacion.' });
     }
 
     await db.transaction('rw', db.eventos, db.alineaciones, db.partidos, async () => {
       await db.eventos.bulkAdd(eventosAGuardar);
       if (input.tipoEvento === 'CAMBIO' && input.jugadorSaleId && input.jugadorEntraId) {
-        await db.alineaciones.where('[partidoId+jugadorId]').equals([input.partidoId, input.jugadorSaleId]).modify({ enCancha: false, estadoActual: 'SUSTITUIDO' });
+        await db.alineaciones.where('[partidoId+jugadorId]').equals([input.partidoId, input.jugadorSaleId]).modify({ enCancha: false, estadoActual: 'SUSTITUIDO', esCapitan: false });
         await db.alineaciones.where('[partidoId+jugadorId]').equals([input.partidoId, input.jugadorEntraId]).modify({ enCancha: true, estadoActual: 'EN_CANCHA' });
       }
       if ((input.tipoEvento === 'TARJETA_ROJA' || input.tipoEvento === 'DOBLE_AMARILLA' || eventosAGuardar.some((evento) => evento.tipoEvento === 'DOBLE_AMARILLA')) && input.jugadorId) {
@@ -622,13 +707,13 @@ export const vocaliaService = {
   cerrarActa: async (partidoId: string, vocal: Usuario, confirmado: boolean): Promise<ActaPartido> => {
     if (!confirmado) throw new Error('Debes confirmar que la informacion registrada es correcta.');
     const partido = await obtenerPartidoConAcceso(partidoId, vocal.id);
-    if (!puedeCerrarActa(partido.estado)) throw new Error('El partido debe estar pendiente de acta.');
+    if (!puedeCerrarActa(partido.estado)) throw new Error('El partido debe estar en revision del acta.');
     const revision = await vocaliaService.validarRevisionActa(partidoId, vocal);
     if (!revision.valido) throw new Error(revision.errores.join(' '));
     const previas = await db.actas.where('partidoId').equals(partidoId).toArray();
     const cerradaEn = ahoraIso();
     const contenido = await snapshot(partidoId, vocal);
-    contenido.partido = { ...contenido.partido, estado: 'ACTA_CERRADA', cerradaEn, cerradaPor: vocal.id };
+    contenido.partido = { ...contenido.partido, estado: 'PENDIENTE_ACTA', cerradaEn, cerradaPor: vocal.id };
     const acta: ActaPartido = {
       id: `${partidoId}-v${previas.length + 1}`,
       partidoId,
@@ -641,9 +726,8 @@ export const vocaliaService = {
     await db.transaction('rw', db.actas, db.partidos, async () => {
       for (const previa of previas) await db.actas.update(previa.id, { activa: false });
       await db.actas.add(acta);
-      await db.partidos.update(partidoId, { estado: 'ACTA_CERRADA', cerradaEn, cerradaPor: vocal.id });
+      await db.partidos.update(partidoId, { estado: 'PENDIENTE_ACTA', cerradaEn, cerradaPor: vocal.id });
     });
-    await sancionesService.procesarActaCerrada(partidoId, acta.version, vocal.id);
     return acta;
   },
 };

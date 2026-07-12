@@ -4,6 +4,7 @@ import { equiposService } from '../../services/equipos.service';
 import type { Jugador, Equipo } from '@saas/shared';
 import { Plus, Edit, Trash2, X, ArrowLeft, Users, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 
 export const JugadoresAdmin = () => {
   const [equipos, setEquipos] = useState<Equipo[]>([]);
@@ -19,6 +20,7 @@ export const JugadoresAdmin = () => {
   const [apellidos, setApellidos] = useState('');
   const [cedula, setCedula] = useState('');
   const [numeroDorsal, setNumeroDorsal] = useState<number | ''>('');
+  const [jugadorParaEliminar, setJugadorParaEliminar] = useState<{ id: string; nombreCompleto: string } | null>(null);
 
   async function cargarEquipos() {
     const datosEquipos = await equiposService.obtenerTodos();
@@ -89,19 +91,18 @@ export const JugadoresAdmin = () => {
     }
   };
 
-  const borrarJugador = async (id: string, nombreCompleto: string) => {
+  const borrarJugador = async (id: string) => {
     if (!equipoViendo) return;
 
-    if (window.confirm(`¿Estás seguro de eliminar a ${nombreCompleto}?`)) {
-      try {
-        await jugadoresService.eliminar(id);
-        toast.success('Jugador eliminado');
-        const datosActualizados = await jugadoresService.obtenerPorEquipo(equipoViendo.id);
-        setJugadores(datosActualizados);
-      } catch (error) {
-        toast.error('No se pudo eliminar el jugador');
-        console.error(error);
-      }
+    try {
+      await jugadoresService.eliminar(id);
+      toast.success('Jugador eliminado');
+      setJugadorParaEliminar(null);
+      const datosActualizados = await jugadoresService.obtenerPorEquipo(equipoViendo.id);
+      setJugadores(datosActualizados);
+    } catch (error) {
+      toast.error('No se pudo eliminar el jugador');
+      console.error(error);
     }
   };
 
@@ -233,7 +234,7 @@ export const JugadoresAdmin = () => {
                         <button onClick={() => abrirModalParaEditar(jugador)} className="p-2 text-slate-400 hover:text-blue-600 transition rounded hover:bg-blue-50" title="Editar">
                           <Edit size={18} />
                         </button>
-                        <button onClick={() => borrarJugador(jugador.id, `${jugador.nombres} ${jugador.apellidos}`)} className="p-2 text-slate-400 hover:text-red-600 transition rounded hover:bg-red-50" title="Eliminar">
+                        <button onClick={() => setJugadorParaEliminar({ id: jugador.id, nombreCompleto: `${jugador.nombres} ${jugador.apellidos}` })} className="p-2 text-slate-400 hover:text-red-600 transition rounded hover:bg-red-50" title="Eliminar">
                           <Trash2 size={18} />
                         </button>
                       </td>
@@ -293,6 +294,17 @@ export const JugadoresAdmin = () => {
           </div>
         </div>
       )}
+
+      <ConfirmationDialog
+        open={Boolean(jugadorParaEliminar)}
+        title="Esta seguro de eliminar este jugador?"
+        description={`Se eliminara a ${jugadorParaEliminar?.nombreCompleto ?? 'este jugador'} de la plantilla local.`}
+        confirmLabel="Eliminar jugador"
+        variant="danger"
+        irreversible
+        onCancel={() => setJugadorParaEliminar(null)}
+        onConfirm={() => jugadorParaEliminar ? borrarJugador(jugadorParaEliminar.id) : undefined}
+      />
     </div>
   );
 };

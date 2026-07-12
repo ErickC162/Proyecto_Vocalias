@@ -319,6 +319,55 @@ export class SaasDatabase extends Dexie {
           }
         }
       });
+
+    this.version(6)
+      .stores({
+        usuarios: 'id, role, rol, ligaId, cedula, email, activo',
+        ligas: 'id',
+        torneos: 'id, ligaId, estado',
+        campeonatos: 'id, ligaId, estado',
+        categorias: 'id, campeonatoId, nombre, activa',
+        canchas: 'id, activa',
+        jornadas: 'id, campeonatoId, numero, estado',
+        fechasCampeonato: 'id, campeonatoId, numero, estado, [campeonatoId+numero]',
+        inscripcionesEquipo: 'id, campeonatoId, equipoId, categoriaId, activa, [campeonatoId+equipoId]',
+        equipos: 'id, torneoId, campeonatoId, categoriaId, activo, [campeonatoId+categoriaId]',
+        jugadores: 'id, equipoId, cedula, estadoHabilitacion, activo, habilitado, [equipoId+numeroDorsal]',
+        partidos: 'id, torneoId, campeonatoId, categoriaId, jornadaId, canchaId, equipoLocalId, equipoVisitanteId, idVocalAsignado, vocalId, arbitroId, estado, eliminado',
+        asignacionesVocal: 'id, partidoId, vocalId, activa, [partidoId+vocalId]',
+        asignacionesArbitro: 'id, partidoId, arbitroId, activa, [partidoId+arbitroId]',
+        alineaciones: 'id, partidoId, equipoId, jugadorId, rol, estadoActual, [partidoId+equipoId], [partidoId+jugadorId], [partidoId+equipoId+jugadorId]',
+        eventos: 'id, partidoId, equipoId, jugadorId, tipoEvento, activo, registradoPorUsuarioId',
+        controlesTiempo: 'id, partidoId, periodo, activo, [partidoId+periodo]',
+        novedades: 'id, partidoId, tipo, activa, creadaPor',
+        actas: 'id, partidoId, version, activa, cerradaPor',
+        procesamientosActa: 'partidoId, versionActa',
+        sanciones: 'id, campeonatoId, equipoId, jugadorId, partidoOrigenId, estado, tipo',
+        sancionesFechas: 'id, sancionId, fechaCampeonatoId, cumplida, partidoCumplimientoId, [sancionId+fechaCampeonatoId]',
+      })
+      .upgrade(async (tx) => {
+        const partidosTable = tx.table<Partido>('partidos');
+        const partidosSeed = await partidosTable
+          .filter((partido) => partido.id === 'partido-seed-1' || partido.id.startsWith('fixture-ida-'))
+          .toArray();
+        const partidosSeedIds = partidosSeed.map((partido) => partido.id);
+        if (partidosSeedIds.length === 0) return;
+
+        await partidosTable.bulkDelete(partidosSeedIds);
+        await tx.table<AsignacionVocal>('asignacionesVocal').where('partidoId').anyOf(partidosSeedIds).delete();
+        await tx.table<AsignacionArbitro>('asignacionesArbitro').where('partidoId').anyOf(partidosSeedIds).delete();
+        await tx.table<AlineacionPartido>('alineaciones').where('partidoId').anyOf(partidosSeedIds).delete();
+        await tx.table<EventoPartido>('eventos').where('partidoId').anyOf(partidosSeedIds).delete();
+        await tx.table<ControlTiempoPartido>('controlesTiempo').where('partidoId').anyOf(partidosSeedIds).delete();
+        await tx.table<NovedadPartido>('novedades').where('partidoId').anyOf(partidosSeedIds).delete();
+        await tx.table<ActaPartido>('actas').where('partidoId').anyOf(partidosSeedIds).delete();
+        await tx.table<ProcesamientoActa>('procesamientosActa').where('partidoId').anyOf(partidosSeedIds).delete();
+        await tx.table<Sancion>('sanciones').where('partidoOrigenId').anyOf(partidosSeedIds).delete();
+        await tx
+          .table<SancionFecha>('sancionesFechas')
+          .filter((fecha) => fecha.sancionId.startsWith('sancion-fechas-eq-local-11'))
+          .delete();
+      });
   }
 }
 

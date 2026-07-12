@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { CalendarDays, ChartNoAxesColumn, Gavel, Home, Settings2, ShieldCheck, Trophy, UserCog, Users } from 'lucide-react';
+import { CalendarDays, ChartNoAxesColumn, Gavel, Home, Settings2, Trophy, UserCog, Users } from 'lucide-react';
 
 export const AdminLayout = () => {
   const location = useLocation();
@@ -19,7 +19,7 @@ export const AdminLayout = () => {
       <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
           <Link to="/admin" className="flex items-center gap-3">
-            <div className="rounded-2xl bg-emerald-600 p-2 text-white"><ShieldCheck size={22} /></div>
+            <img src="/logo.jpg" alt="Liga Barrial" className="h-10 w-10 rounded-xl object-cover opacity-85 ring-1 ring-emerald-100" />
             <div>
               <p className="font-black text-slate-950">Liga Barrial</p>
               <p className="text-xs font-bold text-slate-500">Administracion</p>

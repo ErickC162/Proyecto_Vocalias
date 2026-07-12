@@ -156,6 +156,7 @@ export type EstadoPartido =
   | 'PRIMER_TIEMPO'
   | 'DESCANSO'
   | 'SEGUNDO_TIEMPO'
+  | 'REVISION_ACTA'
   | 'PENDIENTE_ACTA'
   | 'ACTA_CERRADA'
   | 'SUSPENDIDO'
@@ -180,6 +181,8 @@ export interface Partido {
   resultadoLocal?: number;
   resultadoVisitante?: number;
   estado: EstadoPartido;
+  colorCamisetaLocal?: string;
+  colorCamisetaVisitante?: string;
   contabilizado?: boolean;
   eliminado?: boolean;
   inicioRealEn?: string;

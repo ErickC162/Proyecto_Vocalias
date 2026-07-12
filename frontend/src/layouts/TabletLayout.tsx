@@ -21,9 +21,12 @@ export const TabletLayout = () => {
     <div className="app-shell min-h-screen pb-20 md:pb-0">
       <header className="sticky top-0 z-40 border-b border-white/70 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
-          <Link to="/vocal" className="min-w-0">
-            <p className="truncate text-base font-black text-slate-950">Modo vocal</p>
-            {usuario && <p className="truncate text-xs font-bold text-slate-500">{usuario.nombre} {usuario.apellido}</p>}
+          <Link to="/vocal" className="flex min-w-0 items-center gap-3">
+            <img src="/logo.jpg" alt="Liga Barrial" className="h-10 w-10 rounded-xl object-cover opacity-85 ring-1 ring-emerald-100" />
+            <div className="min-w-0">
+              <p className="truncate text-base font-black text-slate-950">Modo vocal</p>
+              {usuario && <p className="truncate text-xs font-bold text-slate-500">{usuario.nombre} {usuario.apellido}</p>}
+            </div>
           </Link>
           <button onClick={cerrarSesion} className="btn-secondary !min-h-10 !px-3">
             <LogOut size={16} /> <span className="hidden sm:inline">Salir</span>

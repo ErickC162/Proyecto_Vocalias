@@ -96,6 +96,10 @@ const Inicio = () => {
 
   return (
     <div className="app-shell flex min-h-screen items-center justify-center px-4 py-10">
+      <Link to="/" className="absolute left-4 top-4 flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 text-sm font-black text-slate-700 shadow-sm ring-1 ring-white/80 backdrop-blur">
+        <img src="/logo.jpg" alt="Liga Barrial" className="h-9 w-9 rounded-xl object-cover opacity-85 ring-1 ring-emerald-100" />
+        <span className="hidden sm:inline">Liga Barrial</span>
+      </Link>
       <main className="grid w-full max-w-6xl gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
         <section>
           <div className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-black text-emerald-700 shadow-sm">

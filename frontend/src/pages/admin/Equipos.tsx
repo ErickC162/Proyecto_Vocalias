@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Edit, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Equipo } from '@saas/shared';
+import { ConfirmationDialog } from '../../components/ConfirmationDialog';
 import { equiposService } from '../../services/equipos.service';
 
 export const EquiposAdmin = () => {
@@ -11,6 +12,7 @@ export const EquiposAdmin = () => {
   const [nombre, setNombre] = useState('');
   const [categoria, setCategoria] = useState('Maxima');
   const [busqueda, setBusqueda] = useState('');
+  const [equipoParaEliminar, setEquipoParaEliminar] = useState<Equipo | null>(null);
 
   async function cargarEquipos() {
     setEquipos(await equiposService.obtenerTodos());
@@ -53,11 +55,11 @@ export const EquiposAdmin = () => {
     }
   };
 
-  const borrarEquipo = async (id: string, nombreEquipo: string) => {
-    if (!window.confirm(`Eliminar ${nombreEquipo}?`)) return;
+  const borrarEquipo = async (id: string) => {
     try {
       await equiposService.eliminar(id);
       toast.success('El equipo fue eliminado.');
+      setEquipoParaEliminar(null);
       cargarEquipos();
     } catch {
       toast.error('No pudimos eliminar el equipo.');
@@ -95,7 +97,7 @@ export const EquiposAdmin = () => {
             <p className="mt-1 text-sm text-slate-500">Plantilla y datos listos para la fecha.</p>
             <div className="mt-4 flex gap-2">
               <button onClick={() => abrirModalParaEditar(equipo)} className="btn-secondary flex-1"><Edit size={16} /> Editar</button>
-              <button aria-label={`Eliminar ${equipo.nombre}`} onClick={() => borrarEquipo(equipo.id, equipo.nombre)} className="btn-secondary text-red-600"><Trash2 size={16} /></button>
+              <button aria-label={`Eliminar ${equipo.nombre}`} onClick={() => setEquipoParaEliminar(equipo)} className="btn-secondary text-red-600"><Trash2 size={16} /></button>
             </div>
           </article>
         ))}
@@ -136,6 +138,17 @@ export const EquiposAdmin = () => {
           </div>
         </div>
       )}
+
+      <ConfirmationDialog
+        open={Boolean(equipoParaEliminar)}
+        title="Esta seguro de eliminar este equipo?"
+        description={`Se eliminara ${equipoParaEliminar?.nombre ?? 'este equipo'} del campeonato local.`}
+        confirmLabel="Eliminar equipo"
+        variant="danger"
+        irreversible
+        onCancel={() => setEquipoParaEliminar(null)}
+        onConfirm={() => equipoParaEliminar ? borrarEquipo(equipoParaEliminar.id) : undefined}
+      />
     </div>
   );
 };

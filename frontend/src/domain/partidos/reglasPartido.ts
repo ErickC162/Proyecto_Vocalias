@@ -9,7 +9,7 @@ export const REGLAS_PARTIDO = {
 
 export const ESTADOS_PREPARACION: EstadoPartido[] = ['ASIGNADO', 'EN_PREPARACION'];
 export const ESTADOS_EN_JUEGO: EstadoPartido[] = ['PRIMER_TIEMPO', 'SEGUNDO_TIEMPO'];
-export const ESTADOS_SOLO_LECTURA: EstadoPartido[] = ['ACTA_CERRADA', 'CANCELADO'];
+export const ESTADOS_SOLO_LECTURA: EstadoPartido[] = ['PENDIENTE_ACTA', 'ACTA_CERRADA', 'CANCELADO'];
 export const ESTADOS_BLOQUEAN_EDICION: EstadoPartido[] = ['ACTA_CERRADA', 'CANCELADO', 'SUSPENDIDO'];
 
 export function puedePrepararAlineacion(estado: EstadoPartido) {
@@ -35,7 +35,7 @@ export function puedeAgregarNovedad(estado: EstadoPartido) {
 }
 
 export function puedeCerrarActa(estado: EstadoPartido) {
-  return estado === 'PENDIENTE_ACTA';
+  return estado === 'REVISION_ACTA';
 }
 
 export function periodoDesdeEstado(estado: EstadoPartido): PeriodoControl | undefined {
@@ -52,7 +52,7 @@ export function numeroPeriodo(periodo: PeriodoControl): 1 | 2 {
 export function accionDashboard(estado: EstadoPartido) {
   if (estado === 'ASIGNADO' || estado === 'EN_PREPARACION') return 'Preparar partido';
   if (estado === 'PRIMER_TIEMPO' || estado === 'DESCANSO' || estado === 'SEGUNDO_TIEMPO') return 'Continuar vocalia';
-  if (estado === 'PENDIENTE_ACTA') return 'Completar acta';
+  if (estado === 'REVISION_ACTA') return 'Revisar y enviar acta';
   if (estado === 'ACTA_CERRADA') return 'Ver acta';
   if (estado === 'SUSPENDIDO') return 'Revisar suspension';
   return 'Abrir';
