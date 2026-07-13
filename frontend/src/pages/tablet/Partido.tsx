@@ -14,7 +14,7 @@ import type {
   VocaliaPartido,
 } from '@saas/shared';
 import { ConfirmationDialog } from '../../components/ConfirmationDialog';
-import { puedePrepararAlineacion, puedeRegistrarEventoDeportivo, periodoDesdeEstado } from '../../domain/partidos/reglasPartido';
+import { puedePrepararAlineacion, puedeRegistrarEventoDeportivo, periodoDesdeEstado, REGLAS_PARTIDO } from '../../domain/partidos/reglasPartido';
 import { sesionService } from '../../services/sesion.service';
 import { calcularMarcadorDesdeEventos, calcularSegundosControl, vocaliaService } from '../../services/vocalia.service';
 
@@ -280,6 +280,10 @@ export const PartidoTablet = () => {
     if (puedePrepararAlineacion(datos.partido.estado)) {
       const actual = obtenerSeleccion(clave);
       const previo = actual[jugador.id];
+      if (rol === 'TITULAR' && previo?.rol !== 'TITULAR' && Object.values(actual).filter((item) => item.rol === 'TITULAR').length >= REGLAS_PARTIDO.maxTitulares) {
+        toast.error(`No se pueden seleccionar mas de ${REGLAS_PARTIDO.maxTitulares} titulares.`);
+        return;
+      }
       const siguiente = {
         ...actual,
         [jugador.id]: {
@@ -300,6 +304,13 @@ export const PartidoTablet = () => {
       if (registrado) {
         toast.warning('El jugador ya esta registrado en este partido.');
         return;
+      }
+      if (rol === 'TITULAR') {
+        const titulares = datos.alineaciones.filter((alineacion) => alineacion.equipoId === equipo.id && alineacion.estadoActual === 'EN_CANCHA').length;
+        if (titulares >= REGLAS_PARTIDO.maxTitulares) {
+          toast.error(`No se pueden registrar mas de ${REGLAS_PARTIDO.maxTitulares} titulares.`);
+          return;
+        }
       }
       setJugadorPanel(null);
       await ejecutar(() => vocaliaService.agregarJugadorTarde(datos.partido.id, equipo.id, jugador.id, rol), `${nombreJugador(jugador)} incorporado como ${rol.toLowerCase()}.`);

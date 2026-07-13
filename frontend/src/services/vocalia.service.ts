@@ -314,6 +314,9 @@ export const vocaliaService = {
       const titulares = delEquipo.filter((item) => item.rol === 'TITULAR');
       const suplentes = delEquipo.filter((item) => item.rol === 'SUPLENTE');
       const capitanesTitulares = titulares.filter((item) => item.esCapitan);
+      if (titulares.length > REGLAS_PARTIDO.maxTitulares) {
+        errores.push(`${equipo.nombre}: no puede tener mas de ${REGLAS_PARTIDO.maxTitulares} titulares. Tiene ${titulares.length}.`);
+      }
       if (titulares.length < REGLAS_PARTIDO.minTitularesAdvertencia) {
         errores.push(`${equipo.nombre}: necesita al menos ${REGLAS_PARTIDO.minTitularesAdvertencia} titulares. Tiene ${titulares.length}; faltan ${REGLAS_PARTIDO.minTitularesAdvertencia - titulares.length}.`);
       }
@@ -441,6 +444,9 @@ export const vocaliaService = {
     const existente = await db.alineaciones.where('[partidoId+jugadorId]').equals([partidoId, jugadorId]).first();
     if (existente) throw new Error('El jugador ya esta registrado en este partido.');
     const delEquipo = await db.alineaciones.where('[partidoId+equipoId]').equals([partidoId, equipoId]).toArray();
+    if (rol === 'TITULAR' && delEquipo.filter((alineacion) => alineacion.estadoActual === 'EN_CANCHA').length >= REGLAS_PARTIDO.maxTitulares) {
+      throw new Error(`No se pueden registrar mas de ${REGLAS_PARTIDO.maxTitulares} titulares.`);
+    }
     const registro: AlineacionPartido = {
       id: `${partidoId}-${equipoId}-${jugadorId}`,
       partidoId,
