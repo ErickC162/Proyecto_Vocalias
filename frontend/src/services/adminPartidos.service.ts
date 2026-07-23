@@ -16,6 +16,7 @@ import type {
   Usuario,
 } from '@saas/shared';
 import { db } from '../db/dexie';
+import { crearId } from '../lib/ids';
 import { calcularMarcadorDesdeEventos, vocaliaService } from './vocalia.service';
 import { sancionesService } from './sanciones.service';
 
@@ -192,7 +193,7 @@ export const adminPartidosService = {
     if (input.arbitroId && (!arbitro || !arbitro.activo || arbitro.role !== 'ARBITRO')) throw new Error('El arbitro seleccionado no esta activo.');
 
     const partido: Partido = {
-      id: crypto.randomUUID(),
+      id: crearId(),
       torneoId: 'torneo-1',
       campeonatoId: input.campeonatoId,
       categoriaId: input.categoriaId,

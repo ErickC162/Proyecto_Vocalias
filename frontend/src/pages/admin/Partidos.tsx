@@ -224,9 +224,9 @@ export const PartidosAdmin = () => {
       </section>
 
       {revisionActa && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
-            <div className="sticky top-0 z-10 border-b border-slate-100 bg-white p-5">
+        <div className="modal-overlay">
+          <div className="modal-card max-w-5xl">
+            <div className="modal-header">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <p className="text-sm font-black uppercase tracking-wide text-emerald-600">Revision administrativa</p>
@@ -257,7 +257,7 @@ export const PartidosAdmin = () => {
               </div>
             </div>
 
-            <div className="grid gap-4 p-5">
+            <div className="modal-body grid gap-4">
               <section className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-2xl bg-slate-950 p-4 text-white md:col-span-2">
                   <p className="text-sm font-bold text-emerald-200">Marcador final</p>

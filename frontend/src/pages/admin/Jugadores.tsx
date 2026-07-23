@@ -199,8 +199,8 @@ export const JugadoresAdmin = () => {
             />
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+            <table className="min-w-[640px] w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
                   <th className="p-4 font-semibold w-24">Dorsal</th>
@@ -249,9 +249,9 @@ export const JugadoresAdmin = () => {
 
       {/* MODAL DE FORMULARIO */}
       {mostrarModal && equipoViendo && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+        <div className="modal-overlay bg-slate-900/50">
+          <div className="modal-card max-w-lg">
+            <div className="modal-header flex items-start justify-between gap-3">
               <h2 className="text-xl font-bold text-slate-800">
                 {jugadorSeleccionadoId ? 'Modificar Jugador' : `Nuevo Jugador para ${equipoViendo.nombre}`}
               </h2>
@@ -260,8 +260,9 @@ export const JugadoresAdmin = () => {
               </button>
             </div>
             
-            <form onSubmit={guardarJugador} className="p-6">
-              <div className="grid grid-cols-2 gap-4 mb-4">
+            <form onSubmit={guardarJugador} className="flex min-h-0 flex-1 flex-col">
+              <div className="modal-body">
+              <div className="grid gap-4 mb-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Nombres</label>
                   <input type="text" required value={nombres} onChange={(e) => setNombres(e.target.value)} className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" />
@@ -272,7 +273,7 @@ export const JugadoresAdmin = () => {
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4 mb-8">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Cédula</label>
                   <input type="text" required value={cedula} onChange={(e) => setCedula(e.target.value)} className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" />
@@ -284,7 +285,9 @@ export const JugadoresAdmin = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+              </div>
+
+              <div className="modal-footer flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => setMostrarModal(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition">Cancelar</button>
                 <button type="submit" disabled={dorsalOcupado} className="btn-primary disabled:opacity-50">
                   {jugadorSeleccionadoId ? 'Guardar Cambios' : 'Registrar Jugador'}

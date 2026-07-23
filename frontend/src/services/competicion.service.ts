@@ -1,5 +1,6 @@
 import type { Campeonato, Cancha, Categoria, Jornada } from '@saas/shared';
 import { db } from '../db/dexie';
+import { crearId } from '../lib/ids';
 
 export interface FechaResumen {
   jornada: Jornada;
@@ -103,7 +104,7 @@ export const competicionService = {
 
   crearCancha: async (nombre: string, direccion?: string): Promise<Cancha> => {
     if (!nombre.trim()) throw new Error('El nombre de la cancha es obligatorio.');
-    const cancha: Cancha = { id: crypto.randomUUID(), nombre: nombre.trim(), direccion: direccion?.trim(), activa: true };
+    const cancha: Cancha = { id: crearId(), nombre: nombre.trim(), direccion: direccion?.trim(), activa: true };
     await db.canchas.add(cancha);
     return cancha;
   },
@@ -112,7 +113,7 @@ export const competicionService = {
     if (!nombre.trim() || !fechaInicio || !fechaFin) throw new Error('Completa los datos de la jornada.');
     const existentes = await db.jornadas.where('campeonatoId').equals(campeonatoId).toArray();
     const jornada: Jornada = {
-      id: crypto.randomUUID(),
+      id: crearId(),
       campeonatoId,
       numero: existentes.length + 1,
       nombre: nombre.trim(),

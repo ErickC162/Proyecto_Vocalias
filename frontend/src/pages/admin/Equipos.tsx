@@ -110,27 +110,29 @@ export const EquiposAdmin = () => {
       </div>
 
       {mostrarModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 p-5">
+        <div className="modal-overlay bg-slate-950/50">
+          <div className="modal-card max-w-md">
+            <div className="modal-header flex items-center justify-between gap-3">
               <h2 className="text-xl font-black text-slate-950">{equipoSeleccionadoId ? 'Editar equipo' : 'Crear equipo'}</h2>
               <button aria-label="Cerrar" onClick={() => setMostrarModal(false)} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"><X size={20} /></button>
             </div>
-            <form onSubmit={guardarEquipo} className="space-y-4 p-5">
-              <label className="block text-sm font-black text-slate-700">
-                Nombre del equipo
-                <input className="field mt-1" required value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Union Central" />
-              </label>
-              <label className="block text-sm font-black text-slate-700">
-                Categoria
-                <select className="field mt-1" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
-                  <option value="Maxima">Maxima</option>
-                  <option value="Primera">Primera</option>
-                  <option value="Segunda">Segunda</option>
-                  <option value="Femenino">Femenino</option>
-                </select>
-              </label>
-              <div className="flex justify-end gap-2 pt-2">
+            <form onSubmit={guardarEquipo} className="flex min-h-0 flex-1 flex-col">
+              <div className="modal-body space-y-4">
+                <label className="block text-sm font-black text-slate-700">
+                  Nombre del equipo
+                  <input className="field mt-1" required value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Union Central" />
+                </label>
+                <label className="block text-sm font-black text-slate-700">
+                  Categoria
+                  <select className="field mt-1" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+                    <option value="Maxima">Maxima</option>
+                    <option value="Primera">Primera</option>
+                    <option value="Segunda">Segunda</option>
+                    <option value="Femenino">Femenino</option>
+                  </select>
+                </label>
+              </div>
+              <div className="modal-footer flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => setMostrarModal(false)} className="btn-secondary">Cancelar</button>
                 <button type="submit" className="btn-primary">Guardar</button>
               </div>

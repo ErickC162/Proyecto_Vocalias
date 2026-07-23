@@ -56,4 +56,28 @@
   .tap-card {
     @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition active:scale-[0.99];
   }
+
+  .modal-overlay {
+    @apply fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-sm sm:p-4;
+  }
+
+  .modal-card {
+    @apply my-auto flex max-h-[calc(100dvh-1.5rem)] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)];
+  }
+
+  .modal-header {
+    @apply shrink-0 border-b border-slate-100 bg-white p-4 sm:p-5;
+  }
+
+  .modal-body {
+    @apply min-h-0 flex-1 overflow-y-auto p-4 sm:p-5;
+  }
+
+  .modal-footer {
+    @apply shrink-0 border-t border-slate-100 bg-white p-4 sm:p-5;
+  }
+
+  .modal-footer > button {
+    @apply w-full sm:w-auto;
+  }
 }

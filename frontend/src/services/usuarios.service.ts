@@ -1,5 +1,6 @@
 import type { Usuario, UserRole } from '@saas/shared';
 import { db } from '../db/dexie';
+import { crearId } from '../lib/ids';
 
 export type UsuarioInput = Pick<Usuario, 'nombre' | 'apellido' | 'email' | 'role' | 'activo'> & {
   cedula?: string;
@@ -9,7 +10,7 @@ export type UsuarioInput = Pick<Usuario, 'nombre' | 'apellido' | 'email' | 'role
 function normalizar(input: UsuarioInput): Usuario {
   const ahora = new Date().toISOString();
   return {
-    id: crypto.randomUUID(),
+    id: crearId(),
     nombre: input.nombre.trim(),
     apellido: input.apellido?.trim(),
     nombres: input.nombre.trim(),

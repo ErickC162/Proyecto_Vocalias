@@ -138,7 +138,7 @@ const Inicio = () => {
   };
 
   return (
-    <div className="app-shell flex min-h-screen items-center justify-center px-4 py-10">
+    <div className="app-shell flex min-h-screen items-center justify-center px-4 pb-10 pt-24 sm:py-10">
       <Link to="/" className="absolute left-4 top-4 flex items-center gap-2 rounded-2xl bg-white/75 px-3 py-2 text-sm font-black text-slate-700 shadow-sm ring-1 ring-white/80 backdrop-blur">
         <img src="/logo.jpg" alt="Liga Barrial" className="h-9 w-9 rounded-xl object-cover opacity-85 ring-1 ring-emerald-100" />
         <span className="hidden sm:inline">Liga Barrial</span>
@@ -148,8 +148,8 @@ const Inicio = () => {
           <div className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-black text-emerald-700 shadow-sm">
             <ShieldCheck size={18} /> Vocalias barriales
           </div>
-          <h1 className="mt-5 text-5xl font-black leading-tight text-slate-950 md:text-7xl">La fecha bajo control, desde la cancha.</h1>
-          <p className="mt-5 max-w-2xl text-lg text-slate-600">
+          <h1 className="mt-5 text-4xl font-black leading-tight text-slate-950 sm:text-5xl md:text-6xl xl:text-7xl">La fecha bajo control, desde la cancha.</h1>
+          <p className="mt-5 max-w-2xl text-base text-slate-600 sm:text-lg">
             Gestiona equipos, plantillas y actas de partido con una experiencia simple para administradores y vocales.
           </p>
         </section>
@@ -158,21 +158,21 @@ const Inicio = () => {
           <h2 className="text-2xl font-black text-slate-950">Entrar al sistema</h2>
           <p className="mt-1 text-sm text-slate-500">Ingresa con el correo y contrasena asignados para tu rol.</p>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            <button type="button" onClick={() => seleccionarAcceso('ADMIN')} className={`group rounded-2xl border p-5 text-left transition ${tipoAcceso === 'ADMIN' ? 'border-emerald-400 bg-white shadow-sm' : 'border-slate-200 bg-slate-50 hover:border-emerald-300 hover:bg-white'}`}>
+            <button type="button" onClick={() => seleccionarAcceso('ADMIN')} className={`group rounded-2xl border p-5 text-left transition ${tipoAcceso === 'ADMIN' ? 'border-emerald-500 bg-emerald-600 text-white shadow-lg shadow-emerald-900/15' : 'border-slate-200 bg-slate-50 text-slate-900 hover:border-emerald-300 hover:bg-white'}`}>
               <div className="flex items-center gap-4">
-                <div className="rounded-2xl bg-emerald-600 p-3 text-white"><Users size={26} /></div>
+                <div className={`rounded-2xl p-3 ${tipoAcceso === 'ADMIN' ? 'bg-white/15 text-white' : 'bg-emerald-600 text-white'}`}><Users size={26} /></div>
                 <div>
                   <p className="text-xl font-black">Administrador</p>
-                  <p className="text-sm text-slate-500">Equipos, jugadores y seguimiento de la fecha.</p>
+                  <p className={`text-sm ${tipoAcceso === 'ADMIN' ? 'text-emerald-50' : 'text-slate-500'}`}>Equipos, jugadores y seguimiento de la fecha.</p>
                 </div>
               </div>
             </button>
-            <button type="button" onClick={() => seleccionarAcceso('VOCAL')} className={`group rounded-2xl border p-5 text-left transition ${tipoAcceso === 'VOCAL' ? 'border-emerald-500 bg-emerald-600 text-white shadow-lg shadow-emerald-900/15' : 'border-emerald-200 bg-emerald-600 text-white shadow-lg shadow-emerald-900/15 hover:bg-emerald-700'}`}>
+            <button type="button" onClick={() => seleccionarAcceso('VOCAL')} className={`group rounded-2xl border p-5 text-left transition ${tipoAcceso === 'VOCAL' ? 'border-emerald-500 bg-emerald-600 text-white shadow-lg shadow-emerald-900/15' : 'border-slate-200 bg-slate-50 text-slate-900 hover:border-emerald-300 hover:bg-white'}`}>
               <div className="flex items-center gap-4">
-                <div className="rounded-2xl bg-white/15 p-3"><ClipboardCheck size={26} /></div>
+                <div className={`rounded-2xl p-3 ${tipoAcceso === 'VOCAL' ? 'bg-white/15 text-white' : 'bg-emerald-600 text-white'}`}><ClipboardCheck size={26} /></div>
                 <div>
                   <p className="text-xl font-black">Vocal de partido</p>
-                  <p className="text-sm text-emerald-50">Abrir mi partido asignado y registrar el acta.</p>
+                  <p className={`text-sm ${tipoAcceso === 'VOCAL' ? 'text-emerald-50' : 'text-slate-500'}`}>Abrir mi partido asignado y registrar el acta.</p>
                 </div>
               </div>
             </button>
@@ -215,7 +215,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Toaster richColors position="top-right" />
+      <Toaster richColors closeButton visibleToasts={3} position="top-right" />
       <Routes>
         <Route path="/" element={<Inicio />} />
         <Route element={<RutaProtegida roles={rolesAdmin}><AdminLayout /></RutaProtegida>}>

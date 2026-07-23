@@ -1,5 +1,6 @@
 import type { Jugador } from '@saas/shared';
 import { db } from '../db/dexie';
+import { crearId } from '../lib/ids';
 
 export class DorsalDuplicadoError extends Error {
   constructor(numeroDorsal: number) {
@@ -40,7 +41,7 @@ export const jugadoresService = {
 
   crear: async (jugador: Omit<Jugador, 'id'>): Promise<string> => {
     await validarDorsalDisponible(jugador.equipoId, jugador.numeroDorsal);
-    const id = crypto.randomUUID();
+    const id = crearId();
     await db.jugadores.add({ ...jugador, id });
     return id;
   },

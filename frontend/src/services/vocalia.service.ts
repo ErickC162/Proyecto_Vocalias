@@ -22,6 +22,7 @@ import {
   REGLAS_PARTIDO,
 } from '../domain/partidos/reglasPartido';
 import { db } from '../db/dexie';
+import { crearId } from '../lib/ids';
 import { sancionesService } from './sanciones.service';
 
 export interface PartidoAsignadoResumen {
@@ -200,7 +201,7 @@ export function calcularSegundosControl(control?: ControlTiempoPartido) {
 
 async function crearEventoSistema(partidoId: string, usuarioId: string, tipoEvento: TipoEventoPartido, periodo: 1 | 2, descripcion?: string) {
   const evento: EventoPartido = {
-    id: crypto.randomUUID(),
+    id: crearId(),
     partidoId,
     tipoEvento,
     minuto: 0,
@@ -608,7 +609,7 @@ export const vocaliaService = {
     if (posibleDuplicado) throw new Error('Este evento ya fue registrado hace un momento.');
 
     const eventosAGuardar: EventoPartido[] = [{
-      id: crypto.randomUUID(),
+      id: crearId(),
       partidoId: input.partidoId,
       tipoEvento: input.tipoEvento,
       equipoId: input.equipoId,
@@ -628,7 +629,7 @@ export const vocaliaService = {
       ? await db.eventos.where('partidoId').equals(input.partidoId).and((evento) => evento.activo && evento.jugadorId === input.jugadorId && evento.tipoEvento === 'TARJETA_AMARILLA').count()
       : 0;
     if (input.tipoEvento === 'TARJETA_AMARILLA' && amarillasPrevias >= 1) {
-      eventosAGuardar.push({ ...eventosAGuardar[0], id: crypto.randomUUID(), tipoEvento: 'DOBLE_AMARILLA', timestampOriginal: ahora + 1, descripcion: 'Expulsion por doble amonestacion.' });
+      eventosAGuardar.push({ ...eventosAGuardar[0], id: crearId(), tipoEvento: 'DOBLE_AMARILLA', timestampOriginal: ahora + 1, descripcion: 'Expulsion por doble amonestacion.' });
     }
 
     await db.transaction('rw', db.eventos, db.alineaciones, db.partidos, async () => {
@@ -670,7 +671,7 @@ export const vocaliaService = {
     const partido = await obtenerPartidoConAcceso(input.partidoId, input.creadaPor);
     if (!puedeAgregarNovedad(partido.estado)) throw new Error('No se pueden agregar novedades en el estado actual.');
     if (!input.descripcion.trim()) throw new Error('La descripcion de la novedad es obligatoria.');
-    const novedad: NovedadPartido = { id: crypto.randomUUID(), ...input, descripcion: input.descripcion.trim(), creadaEn: ahoraIso(), activa: true };
+    const novedad: NovedadPartido = { id: crearId(), ...input, descripcion: input.descripcion.trim(), creadaEn: ahoraIso(), activa: true };
     await db.novedades.add(novedad);
     return novedad;
   },
@@ -691,7 +692,7 @@ export const vocaliaService = {
       if (control) await db.controlesTiempo.update(control.id, { activo: false, segundosAcumulados: calcularSegundosControl(control), actualizadoEn: ahoraIso() });
       await db.partidos.update(partidoId, { estado: 'SUSPENDIDO', estadoAnteriorSuspension: partido.estado });
       await crearEventoSistema(partidoId, usuarioId, 'SUSPENSION', periodo === 'SEGUNDO_TIEMPO' ? 2 : 1, motivo);
-      await db.novedades.add({ id: crypto.randomUUID(), partidoId, tipo: 'SUSPENSION', descripcion: motivo.trim(), periodo, creadaPor: usuarioId, creadaEn: ahoraIso(), activa: true });
+      await db.novedades.add({ id: crearId(), partidoId, tipo: 'SUSPENSION', descripcion: motivo.trim(), periodo, creadaPor: usuarioId, creadaEn: ahoraIso(), activa: true });
     });
   },
 

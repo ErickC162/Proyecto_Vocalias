@@ -1,5 +1,6 @@
 import type { DisponibilidadJugador, EstadoJugadorCompetitivo, EventoPartido, Jugador, Sancion, SancionFecha, TipoSancion } from '@saas/shared';
 import { db } from '../db/dexie';
+import { crearId } from '../lib/ids';
 
 export interface SancionResumen {
   sancion: Sancion;
@@ -59,7 +60,7 @@ export const sancionesService = {
     const jugador = await db.jugadores.get(input.jugadorId);
     if (!jugador) throw new Error('El jugador no existe.');
     const sancion: Sancion = {
-      id: crypto.randomUUID(),
+      id: crearId(),
       campeonatoId: 'camp-1',
       equipoId: jugador.equipoId,
       jugadorId: jugador.id,
@@ -225,7 +226,7 @@ export const sancionesService = {
     const crearPorEvento = (evento: EventoPartido, tipo: TipoSancion, motivo: string) => {
       if (!evento.jugadorId) return;
       sanciones.push({
-        id: crypto.randomUUID(),
+        id: crearId(),
         campeonatoId: partido.campeonatoId ?? 'camp-1',
         equipoId: evento.equipoId,
         jugadorId: evento.jugadorId,
@@ -260,7 +261,7 @@ export const sancionesService = {
       if (amarillas >= limite && !yaGenerada) {
         const jugador = await db.jugadores.get(jugadorId);
         sanciones.push({
-          id: crypto.randomUUID(),
+          id: crearId(),
           campeonatoId: partido.campeonatoId ?? 'camp-1',
           equipoId: jugador?.equipoId,
           jugadorId,

@@ -29,25 +29,27 @@ export function ConfirmationDialog({
   const confirmClass = variant === 'danger' ? 'btn-danger' : 'btn-primary';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="confirmation-dialog-title">
-      <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl">
-        <div className="flex items-start gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-            <AlertTriangle size={24} />
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirmation-dialog-title">
+      <div className="modal-card max-w-lg">
+        <div className="modal-body">
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+              <AlertTriangle size={24} />
+            </div>
+            <div className="min-w-0">
+              <h2 id="confirmation-dialog-title" className="text-xl font-black text-slate-950">{title}</h2>
+              <div className="mt-2 text-sm font-medium leading-6 text-slate-600">{description}</div>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h2 id="confirmation-dialog-title" className="text-xl font-black text-slate-950">{title}</h2>
-            <div className="mt-2 text-sm font-medium leading-6 text-slate-600">{description}</div>
-          </div>
+
+          {irreversible && (
+            <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-700">
+              Esta accion es irreversible. Revisa la informacion antes de confirmar.
+            </div>
+          )}
+
         </div>
-
-        {irreversible && (
-          <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-700">
-            Esta accion es irreversible. Revisa la informacion antes de confirmar.
-          </div>
-        )}
-
-        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <div className="modal-footer flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button type="button" onClick={onCancel} className="btn-secondary">{cancelLabel}</button>
           <button type="button" onClick={onConfirm} className={confirmClass}>{confirmLabel}</button>
         </div>

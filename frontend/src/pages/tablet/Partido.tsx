@@ -662,16 +662,16 @@ export const PartidoTablet = () => {
       .filter((jugador) => !estadoJugadorPartido(equipoJugadoresHabilitados, jugador).registrado)
       .sort((a, b) => a.numeroDorsal - b.numeroDorsal);
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-        <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-          <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5">
+      <div className="modal-overlay">
+        <div className="modal-card max-w-4xl">
+          <div className="modal-header flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-black uppercase text-emerald-600">Vocalia del partido</p>
               <h2 className="text-2xl font-black text-slate-950">Jugadores habilitados</h2>
             </div>
             <button type="button" onClick={() => setModalJugadoresHabilitados(false)} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"><X size={18} /></button>
           </div>
-          <div className="border-b border-slate-100 p-4">
+          <div className="shrink-0 border-b border-slate-100 p-4">
             <div className="grid gap-2 sm:grid-cols-2">
               {(['LOCAL', 'VISITANTE'] as EquipoClave[]).map((clave) => (
                 <button
@@ -685,7 +685,7 @@ export const PartidoTablet = () => {
               ))}
             </div>
           </div>
-          <div className="grid gap-3 overflow-y-auto p-4">
+          <div className="modal-body grid gap-3">
             {jugadores.length === 0 && (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
                 <p className="font-black text-slate-800">No quedan jugadores por agregar.</p>
@@ -1018,8 +1018,9 @@ export const PartidoTablet = () => {
       </div>
 
       {modalInicio && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-3xl rounded-3xl bg-white p-5 shadow-2xl">
+        <div className="modal-overlay bg-black/80">
+          <div className="modal-card max-w-3xl">
+            <div className="modal-body">
             <div className="mb-4">
               <h2 className="text-2xl font-black text-slate-950">Esta seguro de iniciar el primer tiempo?</h2>
               <p className="mt-2 text-slate-600">Una vez confirmado, el partido entrara en juego y los eventos quedaran registrados en el primer tiempo.</p>
@@ -1031,7 +1032,8 @@ export const PartidoTablet = () => {
             </div>
             {validacionPreparacion && renderResumenValidacion(validacionPreparacion)}
             <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-700">Esta accion es irreversible. Revisa alineaciones, colores y validaciones antes de confirmar.</div>
-            <div className="flex justify-end gap-3 mt-5"><button onClick={() => setModalInicio(false)} className="btn-secondary">Cancelar</button><button disabled={!validacionPreparacion?.valido} onClick={() => ejecutar(() => vocaliaService.iniciarPrimerTiempo(datos.partido.id, usuario.id).then(() => setModalInicio(false)), 'Primer tiempo iniciado.')} className="btn-primary disabled:opacity-50">Iniciar primer tiempo</button></div>
+            </div>
+            <div className="modal-footer flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button onClick={() => setModalInicio(false)} className="btn-secondary">Cancelar</button><button disabled={!validacionPreparacion?.valido} onClick={() => ejecutar(() => vocaliaService.iniciarPrimerTiempo(datos.partido.id, usuario.id).then(() => setModalInicio(false)), 'Primer tiempo iniciado.')} className="btn-primary disabled:opacity-50">Iniciar primer tiempo</button></div>
           </div>
         </div>
       )}
@@ -1039,16 +1041,16 @@ export const PartidoTablet = () => {
       {modalJugadoresHabilitados && renderJugadoresHabilitados()}
 
       {jugadorPanel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5">
+        <div className="modal-overlay">
+          <div className="modal-card max-w-lg">
+            <div className="modal-header flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-black uppercase text-emerald-600">{obtenerEquipo(jugadorPanel.clave).nombre}</p>
                 <h2 className="text-2xl font-black text-slate-950">{nombreJugador(jugadorPanel.jugador)}</h2>
               </div>
               <button type="button" onClick={() => setJugadorPanel(null)} className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"><X size={18} /></button>
             </div>
-            <div className="grid gap-4 p-5 sm:grid-cols-[120px_1fr]">
+            <div className="modal-body grid gap-4 sm:grid-cols-[120px_1fr]">
               <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-3xl bg-slate-950 text-4xl font-black text-white">
                 {jugadorPanel.jugador.fotoUrl ? <img src={jugadorPanel.jugador.fotoUrl} alt={nombreJugador(jugadorPanel.jugador)} className="h-full w-full object-cover" /> : jugadorPanel.jugador.numeroDorsal}
               </div>
@@ -1062,7 +1064,7 @@ export const PartidoTablet = () => {
                 <span className={`badge w-fit ${estadoDisciplinario(jugadorPanel.jugador.id).className}`}>{estadoDisciplinario(jugadorPanel.jugador.id).label}</span>
               </div>
             </div>
-            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 p-5 sm:flex-row sm:justify-end">
+            <div className="modal-footer flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button type="button" onClick={() => setJugadorPanel(null)} className="btn-secondary">Cancelar</button>
               {estadoJugadorPartido(jugadorPanel.clave, jugadorPanel.jugador).esTitular && !estadoJugadorPartido(jugadorPanel.clave, jugadorPanel.jugador).bloqueado && !soloLectura && !enRevisionVocal && (
                 <button type="button" onClick={() => marcarCapitan(jugadorPanel.clave, jugadorPanel.jugador.id)} className="btn-secondary">
@@ -1092,10 +1094,10 @@ export const PartidoTablet = () => {
       />
 
       {modalEvento && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <form onSubmit={registrarEvento} className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100"><h2 className="text-xl font-black text-slate-950">Registrar {tipoEvento.toLowerCase()}</h2><button type="button" onClick={() => setModalEvento(false)} className="rounded-full bg-slate-100 p-2 hover:bg-slate-200"><X size={18} /></button></div>
-            <div className="p-4 grid gap-4">
+        <div className="modal-overlay bg-black/80">
+          <form onSubmit={registrarEvento} className="modal-card max-w-xl">
+            <div className="modal-header flex items-center justify-between gap-3"><h2 className="text-xl font-black text-slate-950">Registrar {tipoEvento.toLowerCase()}</h2><button type="button" onClick={() => setModalEvento(false)} className="rounded-full bg-slate-100 p-2 hover:bg-slate-200"><X size={18} /></button></div>
+            <div className="modal-body grid gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <select value={tipoEvento} onChange={(e) => cambiarTipoEvento(e.target.value as TipoEventoPartido)} className="field">{tiposEvento.map((tipo) => <option key={tipo.value} value={tipo.value}>{tipo.label}</option>)}</select>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700">{obtenerEquipo(equipoEvento).nombre}</div>
@@ -1108,7 +1110,7 @@ export const PartidoTablet = () => {
               )}
               <textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={3} placeholder="Detalle opcional" className="field" />
             </div>
-            <div className="flex justify-end gap-3 p-4 border-t border-slate-100"><button type="button" onClick={() => setModalEvento(false)} className="btn-secondary">Cancelar</button><button type="submit" className="btn-primary"><CheckCircle2 size={18} /> Guardar evento</button></div>
+            <div className="modal-footer flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" onClick={() => setModalEvento(false)} className="btn-secondary">Cancelar</button><button type="submit" className="btn-primary"><CheckCircle2 size={18} /> Guardar evento</button></div>
           </form>
         </div>
       )}

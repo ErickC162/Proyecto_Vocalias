@@ -24,25 +24,25 @@ export const AdminLayout = () => {
   return (
     <div className="app-shell min-h-screen">
       <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
-          <Link to="/admin" className="flex items-center gap-3">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <Link to="/admin" className="flex min-w-0 items-center gap-3">
             <img src="/logo.jpg" alt="Liga Barrial" className="h-10 w-10 rounded-xl object-cover opacity-85 ring-1 ring-emerald-100" />
-            <div>
-              <p className="font-black text-slate-950">Liga Barrial</p>
+            <div className="min-w-0">
+              <p className="truncate font-black text-slate-950">Liga Barrial</p>
               <p className="text-xs font-bold text-slate-500">Administracion</p>
             </div>
           </Link>
-          <nav className="flex gap-2 overflow-x-auto">
+          <nav className="flex w-full gap-2 overflow-x-auto pb-1 lg:w-auto">
             {menuItems.map((item) => {
               const active = location.pathname === item.path;
               return (
-                <Link key={item.path} to={item.path} className={`inline-flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-sm font-black transition ${active ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-emerald-50'}`}>
+                <Link key={item.path} to={item.path} className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-black transition ${active ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-emerald-50'}`}>
                   <item.icon size={16} /> {item.name}
                 </Link>
               );
             })}
           </nav>
-          <button onClick={cerrarSesion} className="btn-secondary"><LogOut size={16} /> Salir</button>
+          <button onClick={cerrarSesion} className="btn-secondary w-full lg:w-auto"><LogOut size={16} /> Salir</button>
         </div>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">

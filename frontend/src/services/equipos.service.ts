@@ -1,4 +1,5 @@
 import { db } from '../db/dexie';
+import { crearId } from '../lib/ids';
 import type { Equipo } from '@saas/shared';
 
 export const equiposService = {
@@ -11,7 +12,7 @@ export const equiposService = {
   },
 
   crear: async (equipo: Omit<Equipo, 'id'>): Promise<string> => {
-    const id = crypto.randomUUID(); 
+    const id = crearId();
     await db.equipos.add({ ...equipo, id });
     return id;
   },
